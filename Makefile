@@ -1,22 +1,25 @@
 TARGET = SF2MidiPlayer
 
-LIBDAISY_DIR = ../../libDaisy/
-DAISYSP_DIR  = ../../DaisySP/
+# Build for Daisy Bootloader (store/execute app from QSPI, not internal FLASH)
+APP_TYPE = BOOT_QSPI
 
-LDSCRIPT = $(LIBDAISY_DIR)/core/STM32H750IB_qspi.lds
+# DEBUG = 0
+# OPT   = -Os
+# LTO   = 1
+USE_FATFS = 1
 
 CPP_SOURCES = \
   src/main.cpp \
   src/sd_mount.cpp \
   src/synth_tsf.cpp \
   src/smf_player.cpp \
-  src/clock_sync.cpp
 
-C_SOURCES = \
-  $(LIBDAISY_DIR)/Middlewares/Third_Party/FatFs/src/option/unicode.c
+LIBDAISY_DIR = ../../libDaisy/
+DAISYSP_DIR  = ../../DaisySP/
 
-CXXFLAGS += -Isrc
-CFLAGS   += -Isrc
+# Generate a link map to inspect size/symbol pulls
+# LDFLAGS += -Wl,-Map=build/$(TARGET).map,--cref
+# LDSCRIPT = ./alt_sram.lds
 
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 include $(SYSTEM_FILES_DIR)/Makefile

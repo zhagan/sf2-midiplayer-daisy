@@ -149,6 +149,9 @@ bool SynthLoadSf2(const char* path, float sampleRate, int voices)
 
     tsf_set_output(g_tsf, TSF_STEREO_INTERLEAVED, sampleRate, 0.0f);
     tsf_set_max_voices(g_tsf, voices);
+    // Initialize default preset for channels (0-15), with drums on channel 10.
+    for(int ch = 0; ch < 16; ch++)
+        tsf_channel_set_presetnumber(g_tsf, ch, 0, ch == 9 ? 1 : 0);
     return true;
 }
 
@@ -158,19 +161,26 @@ void SynthPanic()
         tsf_reset(g_tsf);
 }
 
-void SynthNoteOn(uint8_t preset, uint8_t key, uint8_t vel)
+void SynthNoteOn(uint8_t ch, uint8_t key, uint8_t vel)
 {
     if(!g_tsf)
         return;
     const float v = (vel <= 1) ? 0.0f : (float)vel / 127.0f;
-    tsf_note_on(g_tsf, (int)preset, (int)key, v);
+    tsf_channel_note_on(g_tsf, (int)ch, (int)key, v);
 }
 
-void SynthNoteOff(uint8_t preset, uint8_t key)
+void SynthNoteOff(uint8_t ch, uint8_t key)
 {
     if(!g_tsf)
         return;
-    tsf_note_off(g_tsf, (int)preset, (int)key);
+    tsf_channel_note_off(g_tsf, (int)ch, (int)key);
+}
+
+void SynthProgramChange(uint8_t ch, uint8_t program)
+{
+    if(!g_tsf)
+        return;
+    tsf_channel_set_presetnumber(g_tsf, (int)ch, (int)program, ch == 9 ? 1 : 0);
 }
 
 void SynthRender(float* outL, float* outR, size_t frames)

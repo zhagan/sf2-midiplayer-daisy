@@ -53,6 +53,13 @@ class EventQueue
     bool Empty() const { return tail_ == head_; }
 
     void Clear() { head_ = tail_ = 0; }
+    bool IsFull() const { return ((head_ + 1) % N) == tail_; }
+    size_t Size() const
+    {
+        if(head_ >= tail_)
+            return head_ - tail_;
+        return N - (tail_ - head_);
+    }
 
   private:
     MidiEv buf_[N]{};
