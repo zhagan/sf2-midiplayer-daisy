@@ -5,7 +5,7 @@
 
 ENTRY(Reset_Handler)
 
-_SRAM_EXEC_SIZE = 192K;
+_SRAM_EXEC_SIZE = 256K;
 _DMA_MEM_SIZE = 32K;
 
 MEMORY

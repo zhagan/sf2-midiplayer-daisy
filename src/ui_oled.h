@@ -96,6 +96,10 @@ struct UiBackend
 
     virtual int  GetLoopLengthBeats() const    = 0; // >=1
     virtual void SetLoopLengthBeats(int beats) = 0;
+    virtual int  GetLoopStartOffsetTicks() const = 0;
+    virtual void SetLoopStartOffsetTicks(int ticks) = 0;
+    virtual int  GetLoopLengthOffsetTicks() const = 0;
+    virtual void SetLoopLengthOffsetTicks(int ticks) = 0;
 
     virtual void GetLoopStartMbs(int* measure, int* beat, int* sub) const = 0;
     virtual void SetLoopStartMbs(int measure, int beat, int sub)          = 0;
@@ -104,6 +108,7 @@ struct UiBackend
     virtual int         GetMidiFileCount() const         = 0;
     virtual const char* GetMidiFileName(int index) const = 0;
     virtual void        LoadMidiFileByIndex(int index)   = 0;
+    virtual bool        SaveMidiSettings()               = 0;
 
     // ---- SoundFont page ----
     virtual int  GetSfChannel() const       = 0; // 1..16
@@ -284,7 +289,7 @@ class UiOled
     LoopStartField loop_start_field_ = LoopStartField::Measure;
 
     int sel_system_       = 0; // 0..5 (0=Back)
-    int sel_midifile_     = 0; // 0..6 (0=Back)
+    int sel_midifile_     = 0; // 0..7 (0=Back)
     int sel_soundfont_    = 0; // 0..12 (0=Back)
     int sel_fx_           = 0; // 0..5 (0=Back)
     int scroll_main_      = 0;

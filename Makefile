@@ -15,6 +15,7 @@ CPP_SOURCES = \
   src/sd_mount.cpp \
   src/synth_tsf.cpp \
   src/smf_player.cpp \
+  src/major_midi_settings.cpp \
   src/ui_oled.cpp
 
 LIBDAISY_DIR = ../../libDaisy/

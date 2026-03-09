@@ -21,10 +21,10 @@ using namespace major_midi;
 static constexpr bool kEnableUsbLog  = true;
 static constexpr bool kEnableUsbMidi = false;
 
-#define LOG(...)                                \
-    do                                          \
-    {                                           \
-        if(kEnableUsbLog)                       \
+#define LOG(...)                                  \
+    do                                            \
+    {                                             \
+        if(kEnableUsbLog)                         \
             DaisyPatchSM::PrintLine(__VA_ARGS__); \
     } while(0)
 
@@ -39,6 +39,7 @@ static ClockSync         g_clock;
 static UiOled            g_ui;
 static Switch            g_playButton;
 static uint64_t          g_playStartSample = 0;
+static uint64_t          g_playStartTicks  = 0;
 static Switch            g_clockModeSwitch;
 static dsy_gpio          g_clockIn;
 static bool              g_midiRun              = true;
@@ -57,8 +58,8 @@ static volatile bool     g_externalStarted      = false;
 static constexpr size_t kMaxMidiFiles = 64;
 static constexpr size_t kMidiNameMax  = 32;
 static char             g_midiFiles[kMaxMidiFiles][kMidiNameMax];
-static size_t           g_midiFileCount = 0;
-static constexpr size_t kMaxSoundFonts = 32;
+static size_t           g_midiFileCount   = 0;
+static constexpr size_t kMaxSoundFonts    = 32;
 static constexpr size_t kSoundFontNameMax = 32;
 static char             g_soundFonts[kMaxSoundFonts][kSoundFontNameMax];
 static size_t           g_soundFontCount = 0;
@@ -66,30 +67,34 @@ static size_t           g_soundFontCount = 0;
 static void EnqueueImmediate(const MidiEv& ev);
 static bool DequeueImmediate(MidiEv& ev);
 
-static void StartPlayback();
-static void StopPlayback();
+static void     StartPlayback();
+static void     StopPlayback();
+static void     ApplyChannelStateFromUi();
+static bool     SaveCurrentMidiSettings();
 static uint64_t MbsToSamples(int measure, int beat, int sub);
 static uint64_t MbsToTicks(int measure, int beat, int sub);
-static bool LoadMidiFileByName(const char* name);
-static bool LoadSoundFontByName(const char* name);
-static void ScanSoundFontDir();
-static bool g_audioRunning = false;
-static void ScanMidiDir();
-static bool HasExtCaseInsensitive(const char* name, const char* ext);
-void AudioCallback(AudioHandle::InputBuffer  in,
-                   AudioHandle::OutputBuffer out,
-                   size_t                    size);
+static bool     LoadMidiFileByName(const char* name);
+static bool     LoadSoundFontByName(const char* name);
+static void     ScanSoundFontDir();
+static bool     g_audioRunning = false;
+static void     ScanMidiDir();
+static bool     HasExtCaseInsensitive(const char* name, const char* ext);
+void            AudioCallback(AudioHandle::InputBuffer  in,
+                              AudioHandle::OutputBuffer out,
+                              size_t                    size);
 
 class UiBackendImpl final : public UiBackend
 {
   public:
-    int  instrumentPage = 1;
-    char midiName[32]   = "825.mid";
-    bool loop           = false;
-    int  loopStart      = 1;
-    int  loopStartBeat  = 1;
-    int  loopStartSub   = 1;
-    int  loopLen        = 16;
+    int  instrumentPage       = 1;
+    char midiName[32]         = "825.mid";
+    bool loop                 = false;
+    int  loopStart            = 1;
+    int  loopStartBeat        = 1;
+    int  loopStartSub         = 1;
+    int  loopLen              = 16;
+    int  loopStartOffsetTicks = 0;
+    int  loopLenOffsetTicks   = 0;
 
     uint8_t vol[16];
     uint8_t pan[16];
@@ -115,12 +120,23 @@ class UiBackendImpl final : public UiBackend
     Quad     midiMsgs     = Quad::Both;
     Quad     midiProgMsgs = Quad::Both;
 
+  private:
+    static int clampi_(int v, int lo, int hi)
+    {
+        if(v < lo)
+            return lo;
+        if(v > hi)
+            return hi;
+        return v;
+    }
+
+  public:
     // FX
-    float fxRevTime  = 0.85f;
-    float fxRevLp    = 8000.0f;
-    float fxRevHp    = 80.0f;
-    float fxChDepth  = 0.35f;
-    float fxChSpeed  = 0.25f;
+    float fxRevTime = 0.85f;
+    float fxRevLp   = 8000.0f;
+    float fxRevHp   = 80.0f;
+    float fxChDepth = 0.35f;
+    float fxChSpeed = 0.25f;
 
     UiBackendImpl()
     {
@@ -282,7 +298,7 @@ class UiBackendImpl final : public UiBackend
     int  GetLoopStartMeasure() const override { return loopStart; }
     void SetLoopStartMeasure(int m) override
     {
-        loopStart = (m < 1) ? 1 : m;
+        loopStart     = (m < 1) ? 1 : m;
         loopStartBeat = 1;
         loopStartSub  = 1;
     }
@@ -292,68 +308,107 @@ class UiBackendImpl final : public UiBackend
     {
         loopLen = (beats < 1) ? 1 : beats;
     }
+    int GetLoopStartOffsetTicks() const override
+    {
+        return loopStartOffsetTicks;
+    }
+    void SetLoopStartOffsetTicks(int ticks) override
+    {
+        loopStartOffsetTicks = clampi_(ticks, -999, 999);
+    }
+    int GetLoopLengthOffsetTicks() const override { return loopLenOffsetTicks; }
+    void SetLoopLengthOffsetTicks(int ticks) override
+    {
+        loopLenOffsetTicks = clampi_(ticks, -999, 999);
+    }
 
     void GetLoopStartMbs(int* measure, int* beat, int* sub) const override
     {
-        if(measure) *measure = loopStart;
-        if(beat) *beat = loopStartBeat;
-        if(sub) *sub = loopStartSub;
+        if(measure)
+            *measure = loopStart;
+        if(beat)
+            *beat = loopStartBeat;
+        if(sub)
+            *sub = loopStartSub;
     }
 
     void SetLoopStartMbs(int measure, int beat, int sub) override
     {
-        const int ts_num = g_smfPlayer.TimeSigNumerator();
-        const int ts_den = g_smfPlayer.TimeSigDenominator();
+        const int ts_num            = g_smfPlayer.TimeSigNumerator();
+        const int ts_den            = g_smfPlayer.TimeSigDenominator();
         const int beats_per_measure = (ts_num > 0 ? ts_num : 4);
-        const int sub_per_beat = (ts_den > 0 ? (16 / ts_den) : 4);
-        loopStart = (measure < 1) ? 1 : measure;
-        loopStartBeat = (beat < 1) ? 1 : (beat > beats_per_measure ? beats_per_measure : beat);
-        loopStartSub = (sub < 1) ? 1 : (sub > sub_per_beat ? sub_per_beat : sub);
+        const int sub_per_beat      = (ts_den > 0 ? (16 / ts_den) : 4);
+        loopStart                   = (measure < 1) ? 1 : measure;
+        loopStartBeat
+            = (beat < 1)
+                  ? 1
+                  : (beat > beats_per_measure ? beats_per_measure : beat);
+        loopStartSub
+            = (sub < 1) ? 1 : (sub > sub_per_beat ? sub_per_beat : sub);
     }
 
     void GetPlayheadMbs(int* measure, int* beat, int* sub) const override
     {
         if(!g_smfPlayer.IsPlaying())
         {
-            if(measure) *measure = 1;
-            if(beat) *beat = 1;
-            if(sub) *sub = 1;
+            if(measure)
+                *measure = 1;
+            if(beat)
+                *beat = 1;
+            if(sub)
+                *sub = 1;
             return;
         }
-        const uint64_t now = g_useInternalClock ? sampleClock : g_transportSample;
-        uint64_t delta = (now >= g_playStartSample) ? (now - g_playStartSample) : 0;
+        const uint64_t now
+            = g_useInternalClock ? sampleClock : g_transportSample;
+        uint64_t delta
+            = (now >= g_playStartSample) ? (now - g_playStartSample) : 0;
         const uint16_t divisions = g_smfPlayer.Divisions();
         if(divisions == 0)
         {
-            if(measure) *measure = 1;
-            if(beat) *beat = 1;
-            if(sub) *sub = 1;
+            if(measure)
+                *measure = 1;
+            if(beat)
+                *beat = 1;
+            if(sub)
+                *sub = 1;
             return;
         }
         const double spq = g_smfPlayer.SamplesPerQuarterF();
         if(spq <= 0.0)
         {
-            if(measure) *measure = 1;
-            if(beat) *beat = 1;
-            if(sub) *sub = 1;
+            if(measure)
+                *measure = 1;
+            if(beat)
+                *beat = 1;
+            if(sub)
+                *sub = 1;
             return;
         }
-        const double samples_per_tick = spq / (double)divisions;
-        const uint64_t ticks = (uint64_t)(delta / samples_per_tick);
-        const int ts_num = g_smfPlayer.TimeSigNumerator();
-        const int ts_den = g_smfPlayer.TimeSigDenominator();
+        const double   samples_per_tick = spq / (double)divisions;
+        const uint64_t ticks
+            = (uint64_t)(delta / samples_per_tick) + g_playStartTicks;
+        const int ts_num            = g_smfPlayer.TimeSigNumerator();
+        const int ts_den            = g_smfPlayer.TimeSigDenominator();
         const int beats_per_measure = (ts_num > 0 ? ts_num : 4);
         const int ticks_per_beat = (divisions * 4) / (ts_den > 0 ? ts_den : 4);
         const int ticks_per_16th = (divisions / 4) ? (divisions / 4) : 1;
         const int ticks_per_measure = ticks_per_beat * beats_per_measure;
-        const uint64_t meas = (ticks_per_measure > 0) ? (ticks / ticks_per_measure) : 0;
-        const uint64_t rem = (ticks_per_measure > 0) ? (ticks % ticks_per_measure) : 0;
-        const uint64_t beat_idx = (ticks_per_beat > 0) ? (rem / ticks_per_beat) : 0;
+        const uint64_t meas
+            = (ticks_per_measure > 0) ? (ticks / ticks_per_measure) : 0;
+        const uint64_t rem
+            = (ticks_per_measure > 0) ? (ticks % ticks_per_measure) : 0;
+        const uint64_t beat_idx
+            = (ticks_per_beat > 0) ? (rem / ticks_per_beat) : 0;
         const uint64_t rem2 = (ticks_per_beat > 0) ? (rem % ticks_per_beat) : 0;
-        const uint64_t sub_idx = (ticks_per_16th > 0) ? (rem2 / ticks_per_16th) : 0;
-        if(measure) *measure = (int)meas + 1;
-        if(beat) *beat = (int)beat_idx + 1;
-        if(sub) *sub = (int)sub_idx + 1;
+        const uint64_t sub_idx
+            = (ticks_per_16th > 0) ? (rem2 / ticks_per_16th) : 0;
+        if(measure)
+            *measure = (int)meas + 1;
+        if(beat)
+            *beat = (int)beat_idx + 1;
+        if(sub)
+            *sub = (int)sub_idx + 1;
     }
 
     int GetMidiFileCount() const override { return (int)g_midiFileCount; }
@@ -369,6 +424,7 @@ class UiBackendImpl final : public UiBackend
             return;
         LoadMidiFileByName(g_midiFiles[idx]);
     }
+    bool SaveMidiSettings() override { return SaveCurrentMidiSettings(); }
 
     int  GetSfChannel() const override { return sfCh; }
     void SetSfChannel(int ch) override
@@ -528,6 +584,111 @@ static uint8_t ApplyTranspose(uint8_t ch, uint8_t note)
     return (uint8_t)n;
 }
 
+static int GetMajorMidiSongTranspose()
+{
+    return (int)g_smfPlayer.Settings().transpose;
+}
+
+static uint8_t ApplyPlaybackTranspose(uint8_t ch, uint8_t note)
+{
+    if(ch == 9)
+        return note;
+    int n = int(note) + g_transpose + GetMajorMidiSongTranspose();
+    if(n < 0)
+        n = 0;
+    else if(n > 127)
+        n = 127;
+    return (uint8_t)n;
+}
+
+static void SyncUiFromMajorMidiSettings()
+{
+    const auto& settings = g_smfPlayer.Settings();
+    g_uiBackend.loop      = settings.loop_enabled;
+    g_uiBackend.loopStart = settings.loop_start_measure;
+    g_uiBackend.loopStartBeat
+        = settings.loop_start_beat < 1 ? 1 : settings.loop_start_beat;
+    g_uiBackend.loopStartSub
+        = settings.loop_start_sub < 1 ? 1 : settings.loop_start_sub;
+    g_uiBackend.loopLen
+        = settings.loop_length_beats < 1 ? 1 : settings.loop_length_beats;
+    for(uint8_t ch = 0; ch < major_midi::kChannelCount; ch++)
+    {
+        if(major_midi::HasMajorMidiProgramOverride(ch, settings))
+            g_uiBackend.program[ch]
+                = major_midi::ResolveMajorMidiProgram(ch, g_uiBackend.program[ch], settings);
+        if(major_midi::HasMajorMidiPanOverride(ch, settings))
+        {
+            const uint8_t pan
+                = major_midi::ResolveMajorMidiPan(ch, g_uiBackend.pan[ch], settings);
+            g_uiBackend.pan[ch]   = pan;
+            g_uiBackend.sfPan[ch] = pan;
+        }
+    }
+}
+
+static bool SaveCurrentMidiSettings()
+{
+    auto& settings        = g_smfPlayer.MutableSettings();
+    settings.bpm_override = (uint16_t)g_uiBackend.GetBpm();
+    settings.loop_enabled = g_uiBackend.GetLoop();
+
+    int lm = 1, lb = 1, ls = 1;
+    g_uiBackend.GetLoopStartMbs(&lm, &lb, &ls);
+    if(lm < 1)
+        lm = 1;
+    if(lb < 1)
+        lb = 1;
+    if(ls < 1)
+        ls = 1;
+    settings.loop_start_measure = (uint16_t)lm;
+    settings.loop_start_beat    = (uint8_t)lb;
+    settings.loop_start_sub     = (uint8_t)ls;
+
+    int loop_len = g_uiBackend.GetLoopLengthBeats();
+    if(loop_len < 1)
+        loop_len = 1;
+    settings.loop_length_beats = (uint16_t)loop_len;
+    return g_smfPlayer.SaveSettings();
+}
+
+static void ApplyMajorMidiPlaybackSettings(MidiEv& ev)
+{
+    const auto& settings = g_smfPlayer.Settings();
+    switch(ev.type)
+    {
+        case EvType::Program:
+            ev.a = major_midi::ResolveMajorMidiProgram(ev.ch, ev.a, settings);
+            break;
+        case EvType::ControlChange:
+            switch(ev.a)
+            {
+                case 7:
+                    ev.b = major_midi::ScaleMajorMidiController(
+                        ev.b, settings.master_volume_max);
+                    break;
+                case 10:
+                    ev.b = major_midi::ResolveMajorMidiPan(ev.ch, ev.b, settings);
+                    break;
+                case 11:
+                    ev.b = major_midi::ScaleMajorMidiController(
+                        ev.b, settings.expression_max);
+                    break;
+                case 91:
+                    ev.b = major_midi::ScaleMajorMidiController(
+                        ev.b, settings.reverb_max);
+                    break;
+                case 93:
+                    ev.b = major_midi::ScaleMajorMidiController(
+                        ev.b, settings.chorus_max);
+                    break;
+                default: break;
+            }
+            break;
+        default: break;
+    }
+}
+
 static void EnqueueImmediate(const MidiEv& ev)
 {
     daisy::ScopedIrqBlocker lock;
@@ -552,6 +713,23 @@ static void StopPlayback()
     dsy_gpio_write(&hw.gate_out_1, 0);
     g_externalStarted = false;
     g_playStartSample = 0;
+    g_playStartTicks  = 0;
+}
+
+static void ApplyChannelStateFromUi()
+{
+    SynthResetChannels();
+    const auto& settings = g_smfPlayer.Settings();
+    for(int ch = 0; ch < 16; ch++)
+    {
+        const uint8_t program = major_midi::ResolveMajorMidiProgram(
+            (uint8_t)ch, g_uiBackend.GetChanProgram(ch), settings);
+        const uint8_t pan
+            = major_midi::ResolveMajorMidiPan((uint8_t)ch, g_uiBackend.GetChanPan(ch), settings);
+        SynthProgramChange((uint8_t)ch, program);
+        SynthControlChange((uint8_t)ch, 7, g_uiBackend.GetChanVolume(ch));
+        SynthControlChange((uint8_t)ch, 10, pan);
+    }
 }
 
 static void StartPlayback()
@@ -578,15 +756,27 @@ static void StartPlayback()
     {
         int lm = 1, lb = 1, ls = 1;
         g_uiBackend.GetLoopStartMbs(&lm, &lb, &ls);
-        const uint64_t loop_start_ticks = MbsToTicks(lm, lb, ls);
-        const uint64_t loop_start = g_smfPlayer.SamplesFromTicks(loop_start_ticks);
+        int64_t loop_start_ticks = (int64_t)MbsToTicks(lm, lb, ls);
+        // Offsets disabled for now; keep for future tuning.
+        // loop_start_ticks += (int64_t)g_uiBackend.GetLoopStartOffsetTicks();
+        if(loop_start_ticks < 0)
+            loop_start_ticks = 0;
+        uint64_t loop_start
+            = g_smfPlayer.SamplesFromTicks((uint64_t)loop_start_ticks);
+        if(loop_start > 0)
+            loop_start -= 1;
         g_smfPlayer.SeekToSample(loop_start, startClock);
-        g_playStartSample = (startClock >= loop_start) ? (startClock - loop_start) : 0;
+        g_playStartSample = startClock;
+        g_playStartTicks  = (uint64_t)loop_start_ticks;
+        // Ensure program/CC state is applied at loop start
+        ApplyChannelStateFromUi();
     }
     else
     {
         g_smfPlayer.Start(startClock);
         g_playStartSample = startClock;
+        g_playStartTicks  = 0;
+        ApplyChannelStateFromUi();
     }
 }
 
@@ -596,37 +786,46 @@ static uint64_t MbsToTicks(int measure, int beat, int sub)
     if(divisions == 0)
         return 0;
 
-    const int ts_num = g_smfPlayer.TimeSigNumerator();
-    const int ts_den = g_smfPlayer.TimeSigDenominator();
+    const int ts_num            = g_smfPlayer.TimeSigNumerator();
+    const int ts_den            = g_smfPlayer.TimeSigDenominator();
     const int beats_per_measure = (ts_num > 0 ? ts_num : 4);
-    const int ticks_per_beat = (divisions * 4) / (ts_den > 0 ? ts_den : 4);
-    const int ticks_per_16th = (divisions / 4) ? (divisions / 4) : 1;
+    const int ticks_per_beat    = (divisions * 4) / (ts_den > 0 ? ts_den : 4);
+    const int ticks_per_16th    = (divisions / 4) ? (divisions / 4) : 1;
 
     const int m = (measure < 1) ? 1 : measure;
     const int b = (beat < 1) ? 1 : beat;
     const int s = (sub < 1) ? 1 : sub;
 
-    const uint64_t ticks
-        = (uint64_t)(m - 1) * (uint64_t)beats_per_measure * (uint64_t)ticks_per_beat
-          + (uint64_t)(b - 1) * (uint64_t)ticks_per_beat
-          + (uint64_t)(s - 1) * (uint64_t)ticks_per_16th;
+    const uint64_t ticks = (uint64_t)(m - 1) * (uint64_t)beats_per_measure
+                               * (uint64_t)ticks_per_beat
+                           + (uint64_t)(b - 1) * (uint64_t)ticks_per_beat
+                           + (uint64_t)(s - 1) * (uint64_t)ticks_per_16th;
 
     return ticks;
 }
 
 static uint64_t MbsToSamples(int measure, int beat, int sub)
 {
-    return g_smfPlayer.SamplesFromTicks(MbsToTicks(measure, beat, sub));
+    const double   spq       = g_smfPlayer.SamplesPerQuarterF();
+    const uint16_t divisions = g_smfPlayer.Divisions();
+    if(spq <= 0.0 || divisions == 0)
+        return 0;
+    const uint64_t ticks            = MbsToTicks(measure, beat, sub);
+    const double   samples_per_tick = spq / (double)divisions;
+    return (uint64_t)llround((double)ticks * samples_per_tick);
 }
 
 static uint64_t BeatsToSamples(int beats)
 {
+    const double   spq       = g_smfPlayer.SamplesPerQuarterF();
     const uint16_t divisions = g_smfPlayer.Divisions();
-    if(divisions == 0)
+    if(spq <= 0.0 || divisions == 0)
         return 0;
-    const int ts_den = g_smfPlayer.TimeSigDenominator();
-    const int ticks_per_beat = (divisions * 4) / (ts_den > 0 ? ts_den : 4);
-    return g_smfPlayer.SamplesFromTicks((uint64_t)beats * (uint64_t)ticks_per_beat);
+    const int    ts_den           = g_smfPlayer.TimeSigDenominator();
+    const int    ticks_per_beat   = (divisions * 4) / (ts_den > 0 ? ts_den : 4);
+    const double samples_per_tick = spq / (double)divisions;
+    return (uint64_t)llround((double)beats * (double)ticks_per_beat
+                             * samples_per_tick);
 }
 
 static bool HasExtCaseInsensitive(const char* name, const char* ext)
@@ -639,7 +838,8 @@ static bool HasExtCaseInsensitive(const char* name, const char* ext)
     dot++;
     while(*dot && *ext)
     {
-        if(std::tolower((unsigned char)*dot) != std::tolower((unsigned char)*ext))
+        if(std::tolower((unsigned char)*dot)
+           != std::tolower((unsigned char)*ext))
             return false;
         dot++;
         ext++;
@@ -668,9 +868,7 @@ static void ScanMidiDir()
         if(g_midiFileCount >= kMaxMidiFiles)
             break;
 
-        std::strncpy(g_midiFiles[g_midiFileCount],
-                     fno.fname,
-                     kMidiNameMax - 1);
+        std::strncpy(g_midiFiles[g_midiFileCount], fno.fname, kMidiNameMax - 1);
         g_midiFiles[g_midiFileCount][kMidiNameMax - 1] = '\0';
         g_midiFileCount++;
     }
@@ -699,9 +897,8 @@ static void ScanSoundFontDir()
         if(g_soundFontCount >= kMaxSoundFonts)
             break;
 
-        std::strncpy(g_soundFonts[g_soundFontCount],
-                     fno.fname,
-                     kSoundFontNameMax - 1);
+        std::strncpy(
+            g_soundFonts[g_soundFontCount], fno.fname, kSoundFontNameMax - 1);
         g_soundFonts[g_soundFontCount][kSoundFontNameMax - 1] = '\0';
         g_soundFontCount++;
     }
@@ -721,9 +918,12 @@ static bool LoadMidiFileByName(const char* name)
     const bool ok = g_smfPlayer.Open(g_midiPath);
     if(ok)
     {
+        g_tempoScale        = 1.0f;
+        g_tempoScaleApplied = 0.0f;
         std::strncpy(
             g_uiBackend.midiName, name, sizeof(g_uiBackend.midiName) - 1);
         g_uiBackend.midiName[sizeof(g_uiBackend.midiName) - 1] = '\0';
+        SyncUiFromMajorMidiSettings();
         g_ui.Invalidate();
     }
     return ok;
@@ -905,9 +1105,9 @@ static void DispatchMidiMessage(MidiEvent msg)
         {
             auto   pgm = msg.AsProgramChange();
             MidiEv ev{};
-            ev.type = EvType::Program;
-            ev.ch   = pgm.channel;
-            ev.a    = pgm.program;
+            ev.type                          = EvType::Program;
+            ev.ch                            = pgm.channel;
+            ev.a                             = pgm.program;
             g_uiBackend.program[pgm.channel] = pgm.program;
             EnqueueImmediate(ev);
         }
@@ -1006,18 +1206,27 @@ static void ProcessScheduledEvents(uint64_t sampleNow)
         switch(ev.type)
         {
             case EvType::NoteOn:
-                ev.a = ApplyTranspose(ev.ch, ev.a);
+                ev.a = ApplyPlaybackTranspose(ev.ch, ev.a);
                 EnqueueImmediate(ev);
                 break;
             case EvType::NoteOff:
-                ev.a = ApplyTranspose(ev.ch, ev.a);
+                ev.a = ApplyPlaybackTranspose(ev.ch, ev.a);
                 EnqueueImmediate(ev);
                 break;
             case EvType::Program:
+                ApplyMajorMidiPlaybackSettings(ev);
                 g_uiBackend.program[ev.ch] = ev.a;
                 EnqueueImmediate(ev);
                 break;
-            case EvType::ControlChange: EnqueueImmediate(ev); break;
+            case EvType::ControlChange:
+                ApplyMajorMidiPlaybackSettings(ev);
+                if(ev.a == 10)
+                {
+                    g_uiBackend.pan[ev.ch]   = ev.b;
+                    g_uiBackend.sfPan[ev.ch] = ev.b;
+                }
+                EnqueueImmediate(ev);
+                break;
             case EvType::PitchBend: EnqueueImmediate(ev); break;
             case EvType::AllNotesOff: EnqueueImmediate(ev); break;
         }
@@ -1036,8 +1245,8 @@ int main(void)
     const bool sdOk = SdMount();
     LOG("SdMount: %s", sdOk ? "PASS" : "FAIL");
 
-    const float sr  = hw.AudioSampleRate();
-    g_sampleRate    = sr;
+    const float sr = hw.AudioSampleRate();
+    g_sampleRate   = sr;
     if(sdOk)
     {
         ScanMidiDir();
@@ -1046,10 +1255,7 @@ int main(void)
 
     if(g_midiFileCount > 0)
     {
-        snprintf(g_midiPath,
-                 sizeof(g_midiPath),
-                 "0:/midi/%s",
-                 g_midiFiles[0]);
+        snprintf(g_midiPath, sizeof(g_midiPath), "0:/midi/%s", g_midiFiles[0]);
         std::strncpy(g_uiBackend.midiName,
                      g_midiFiles[0],
                      sizeof(g_uiBackend.midiName) - 1);
@@ -1058,10 +1264,7 @@ int main(void)
 
     char sf_path[64] = "0:/soundfonts/microgm.sf2";
     if(g_soundFontCount > 0)
-        snprintf(sf_path,
-                 sizeof(sf_path),
-                 "0:/soundfonts/%s",
-                 g_soundFonts[0]);
+        snprintf(sf_path, sizeof(sf_path), "0:/soundfonts/%s", g_soundFonts[0]);
 
     const bool sfOk = sdOk && SynthLoadSf2(sf_path, sr, 32);
     LOG("SF2 mem: used=%lu cap=%lu oom=%d",
@@ -1130,6 +1333,7 @@ int main(void)
     ui_pins.encA     = DaisyPatchSM::A9;
     ui_pins.encB     = DaisyPatchSM::A8;
     ui_pins.encClick = DaisyPatchSM::A2;
+    System::Delay(500);
     g_ui.Init(hw, ui_pins, g_uiBackend);
 
     uint32_t lastStatusLog = System::GetNow();
@@ -1222,33 +1426,39 @@ int main(void)
         {
             int lm = 1, lb = 1, ls = 1;
             g_uiBackend.GetLoopStartMbs(&lm, &lb, &ls);
-            const uint64_t loop_start_ticks = MbsToTicks(lm, lb, ls);
-            const uint64_t loop_len_ticks = (uint64_t)g_uiBackend.GetLoopLengthBeats()
-                                            * (uint64_t)((g_smfPlayer.Divisions() * 4)
-                                                         / (g_smfPlayer.TimeSigDenominator()
-                                                            ? g_smfPlayer.TimeSigDenominator()
-                                                            : 4));
-            const uint64_t loop_start = g_smfPlayer.SamplesFromTicks(loop_start_ticks);
-            const uint64_t loop_len = g_smfPlayer.SamplesFromTicksRange(loop_start_ticks,
-                                                                        loop_len_ticks);
-            const uint64_t loop_end = loop_start + loop_len;
-            const uint64_t play_pos = (clockNow >= g_playStartSample)
-                                          ? (clockNow - g_playStartSample)
-                                          : 0;
-            if(loop_len > 0 && play_pos >= loop_end)
+            int64_t loop_start_ticks = (int64_t)MbsToTicks(lm, lb, ls);
+            // Offsets disabled for now; keep for future tuning.
+            // loop_start_ticks += (int64_t)g_uiBackend.GetLoopStartOffsetTicks();
+            if(loop_start_ticks < 0)
+                loop_start_ticks = 0;
+            int64_t loop_len_ticks
+                = (int64_t)g_uiBackend.GetLoopLengthBeats()
+                  * (int64_t)((g_smfPlayer.Divisions() * 4)
+                              / (g_smfPlayer.TimeSigDenominator()
+                                     ? g_smfPlayer.TimeSigDenominator()
+                                     : 4));
+            // loop_len_ticks += (int64_t)g_uiBackend.GetLoopLengthOffsetTicks();
+            if(loop_len_ticks < 1)
+                loop_len_ticks = 1;
+            const uint64_t play_pos_ticks
+                = g_smfPlayer.TicksFromSamples(
+                      (clockNow >= g_playStartSample)
+                          ? (clockNow - g_playStartSample)
+                          : 0)
+                  + g_playStartTicks;
+            if(play_pos_ticks >= (uint64_t)(loop_start_ticks + loop_len_ticks))
             {
                 g_queue.Clear();
                 g_immediate.Clear();
-                g_smfPlayer.SeekToSample(loop_start, clockNow);
-                g_playStartSample = (clockNow >= loop_start) ? (clockNow - loop_start) : 0;
-                // Reapply channel state so drums (ch10) and CCs are correct after seek
-                SynthResetChannels();
-                for(int ch = 0; ch < 16; ch++)
-                {
-                    SynthProgramChange((uint8_t)ch, g_uiBackend.GetChanProgram(ch));
-                    SynthControlChange((uint8_t)ch, 7, g_uiBackend.GetChanVolume(ch));
-                    SynthControlChange((uint8_t)ch, 10, g_uiBackend.GetChanPan(ch));
-                }
+                uint64_t loop_start_samples
+                    = g_smfPlayer.SamplesFromTicks((uint64_t)loop_start_ticks);
+                if(loop_start_samples > 0)
+                    loop_start_samples -= 1;
+                g_smfPlayer.SeekToSample(loop_start_samples, clockNow);
+                g_playStartSample = clockNow;
+                g_playStartTicks  = (uint64_t)loop_start_ticks;
+                // Reapply channel state so programs/CCs are correct after seek
+                ApplyChannelStateFromUi();
             }
         }
 

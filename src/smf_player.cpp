@@ -33,6 +33,9 @@ uint16_t ReadUint16BE(FIL& f)
 bool SmfPlayer::Open(const char* path)
 {
     Close();
+    settings_.Reset();
+    std::strncpy(path_, path ? path : "", sizeof(path_) - 1);
+    path_[sizeof(path_) - 1] = '\0';
 
     if(f_open(&file_, path, FA_READ) != FR_OK)
     {
@@ -73,6 +76,10 @@ bool SmfPlayer::Open(const char* path)
 
     (void)format;
     trackCount_ = tracks;
+    fileTempoUsec_ = 500000;
+    tempo_         = 500000;
+    ts_num_        = 4;
+    ts_den_        = 4;
     for(uint16_t i = 0; i < trackCount_; i++)
     {
         trackNames_[i][0]  = '\0';
@@ -91,6 +98,7 @@ bool SmfPlayer::Open(const char* path)
         tracks_[i].remaining    = len;
         tracks_[i].running      = 0;
         tracks_[i].sampleFrac   = 0.0;
+        tracks_[i].tickOffset   = 0;
         tracks_[i].sampleOffset = 0;
         tracks_[i].finished     = false;
         tracks_[i].hasEvent     = false;
@@ -101,6 +109,7 @@ bool SmfPlayer::Open(const char* path)
     playing_ = false;
     open_    = true;
 
+    LoadMajorMidiSettings();
     BuildTempoMap();
     UpdateSamplesPerTick();
     return true;
@@ -116,6 +125,8 @@ void SmfPlayer::Close()
     open_       = false;
     playing_    = false;
     trackCount_ = 0;
+    path_[0]    = '\0';
+    settings_.Reset();
 }
 
 void SmfPlayer::SetSampleRate(float sr)
@@ -186,6 +197,7 @@ void SmfPlayer::Start(uint64_t sampleNow)
             tracks_[i].remaining    = tracks_[i].length;
             tracks_[i].running      = 0;
             tracks_[i].sampleFrac   = 0.0;
+            tracks_[i].tickOffset   = 0;
             tracks_[i].sampleOffset = 0;
             tracks_[i].finished     = false;
             tracks_[i].hasEvent     = false;
@@ -216,6 +228,7 @@ void SmfPlayer::SeekToSample(uint64_t targetSample, uint64_t nowSample)
         tracks_[i].remaining    = tracks_[i].length;
         tracks_[i].running      = 0;
         tracks_[i].sampleFrac   = 0.0;
+        tracks_[i].tickOffset   = 0;
         tracks_[i].sampleOffset = 0;
         tracks_[i].finished     = false;
         tracks_[i].hasEvent     = false;
@@ -304,11 +317,9 @@ bool SmfPlayer::ParseNextEvent(uint16_t trackIndex, TrackState& trk, MidiEv& out
             return false;
         }
 
-        const double deltaSamples = deltaTicks * samplesPerTick_;
-        trk.sampleFrac += deltaSamples;
-        const uint64_t samples = static_cast<uint64_t>(trk.sampleFrac);
-        trk.sampleFrac -= samples;
-        trk.sampleOffset += samples;
+        trk.tickOffset += deltaTicks;
+        trk.sampleOffset = SamplesFromTicks(trk.tickOffset);
+        trk.sampleFrac = 0.0;
         const uint64_t eventSample = startSample_ + trk.sampleOffset;
 
         uint8_t statusByte = 0;
@@ -343,9 +354,12 @@ bool SmfPlayer::ParseNextEvent(uint16_t trackIndex, TrackState& trk, MidiEv& out
                         return false;
                     }
                 }
-                tempo_ = (uint32_t(buf[0]) << 16) | (uint32_t(buf[1]) << 8)
-                         | uint32_t(buf[2]);
-                UpdateSamplesPerTick();
+                if(!HasBpmOverride())
+                {
+                    tempo_ = (uint32_t(buf[0]) << 16) | (uint32_t(buf[1]) << 8)
+                             | uint32_t(buf[2]);
+                    UpdateSamplesPerTick();
+                }
             }
             else if(type == 0x58 && length == 4)
             {
@@ -606,6 +620,7 @@ bool SmfPlayer::SeekTrackHeader(uint32_t& length)
 
 void SmfPlayer::UpdateSamplesPerTick()
 {
+    tempo_ = EffectiveTempoUsec();
     if(divisions_ == 0)
     {
         samplesPerTick_ = 0.0;
@@ -655,113 +670,242 @@ uint64_t SmfPlayer::SamplesFromTicksRange(uint64_t startTicks, uint64_t lengthTi
     return (b >= a) ? (b - a) : 0;
 }
 
+void SmfPlayer::InsertTempoPoint(uint32_t tick, uint32_t tempo)
+{
+    if(tempoCount_ >= kMaxTempoPoints)
+        return;
+    tempoTicks_[tempoCount_] = tick;
+    tempoUsec_[tempoCount_]  = tempo;
+    tempoCount_++;
+}
+
+uint64_t SmfPlayer::TicksFromSamples(uint64_t samples) const
+{
+    if(divisions_ == 0)
+        return 0;
+
+    const uint16_t count = (tempoCount_ == 0) ? 1 : tempoCount_;
+    const uint32_t defaultTempo = (tempoCount_ == 0) ? tempo_ : tempoUsec_[0];
+
+    uint64_t curTick = 0;
+    double   remSamples = (double)samples;
+
+    for(uint16_t i = 0; i < count; i++)
+    {
+        const uint32_t tempo = (tempoCount_ == 0) ? defaultTempo : tempoUsec_[i];
+        const uint64_t nextTick = (i + 1 < count) ? tempoTicks_[i + 1] : UINT64_MAX;
+
+        const double spt
+            = ((tempo / double(tempo_scale_)) * sr_) / (double(divisions_) * 1000000.0);
+        if(spt <= 0.0)
+            break;
+
+        if(nextTick == UINT64_MAX)
+        {
+            curTick += (uint64_t)floor(remSamples / spt);
+            return curTick;
+        }
+
+        const uint64_t segTicks = (nextTick > curTick) ? (nextTick - curTick) : 0;
+        const double   segSamples = (double)segTicks * spt;
+
+        if(remSamples < segSamples)
+        {
+            curTick += (uint64_t)floor(remSamples / spt);
+            return curTick;
+        }
+
+        remSamples -= segSamples;
+        curTick = nextTick;
+        if(remSamples <= 0.0)
+            return curTick;
+    }
+
+    return curTick;
+}
+
 void SmfPlayer::BuildTempoMap()
 {
     tempoCount_ = 0;
     if(trackCount_ == 0)
         return;
 
-    TrackState trk{};
-    trk.start     = tracks_[0].start;
-    trk.pos       = tracks_[0].start;
-    trk.length    = tracks_[0].length;
-    trk.remaining = tracks_[0].length;
-    trk.running   = 0;
-
-    uint64_t absTicks = 0;
-    tempoTicks_[tempoCount_] = 0;
-    tempoUsec_[tempoCount_]  = tempo_;
-    tempoCount_++;
-
-    while(trk.remaining > 0)
+    if(HasBpmOverride())
     {
-        uint32_t deltaTicks = 0;
-        if(!ReadVarLen(trk, deltaTicks))
-            break;
-        absTicks += deltaTicks;
+        InsertTempoPoint(0, EffectiveTempoUsec());
+        tempo_ = EffectiveTempoUsec();
+        return;
+    }
 
-        uint8_t statusByte = 0;
-        if(!ReadTrackByte(trk, statusByte))
-            break;
+    InsertTempoPoint(0, fileTempoUsec_);
 
-        if(statusByte == 0xFF)
+    for(uint16_t ti = 0; ti < trackCount_; ti++)
+    {
+        TrackState trk{};
+        trk.start     = tracks_[ti].start;
+        trk.pos       = tracks_[ti].start;
+        trk.length    = tracks_[ti].length;
+        trk.remaining = tracks_[ti].length;
+        trk.running   = 0;
+
+        uint64_t absTicks = 0;
+
+        while(trk.remaining > 0)
         {
-            uint8_t type = 0;
-            if(!ReadTrackByte(trk, type))
+            if(f_lseek(&file_, trk.pos) != FR_OK)
                 break;
-            uint32_t length = 0;
-            if(!ReadVarLen(trk, length))
+            uint32_t deltaTicks = 0;
+            if(!ReadVarLen(trk, deltaTicks))
+                break;
+            absTicks += deltaTicks;
+
+            uint8_t statusByte = 0;
+            if(!ReadTrackByte(trk, statusByte))
                 break;
 
-            if(type == 0x51 && length == 3)
+            if(statusByte == 0xFF)
             {
-                uint8_t buf[3];
-                for(uint32_t i = 0; i < 3; i++)
+                uint8_t type = 0;
+                if(!ReadTrackByte(trk, type))
+                    break;
+                uint32_t length = 0;
+                if(!ReadVarLen(trk, length))
+                    break;
+
+                if(type == 0x51 && length == 3)
                 {
-                    if(!ReadTrackByte(trk, buf[i]))
-                        return;
+                    uint8_t buf[3];
+                    for(uint32_t i = 0; i < 3; i++)
+                    {
+                        if(!ReadTrackByte(trk, buf[i]))
+                            return;
+                    }
+                    const uint32_t tempo
+                        = (uint32_t(buf[0]) << 16) | (uint32_t(buf[1]) << 8)
+                          | uint32_t(buf[2]);
+                    if(tempoCount_ == 1 && absTicks == 0)
+                        fileTempoUsec_ = tempo;
+                    InsertTempoPoint((uint32_t)absTicks, tempo);
                 }
-                const uint32_t tempo = (uint32_t(buf[0]) << 16) | (uint32_t(buf[1]) << 8)
-                                       | uint32_t(buf[2]);
-                if(tempoCount_ < kMaxTempoPoints)
+                else
                 {
-                    tempoTicks_[tempoCount_] = (uint32_t)absTicks;
-                    tempoUsec_[tempoCount_]  = tempo;
-                    tempoCount_++;
+                    if(!SkipBytes(trk, length))
+                        break;
                 }
+                if(type == 0x2F)
+                    break;
+                continue;
+            }
+
+            if(statusByte == 0xF0 || statusByte == 0xF7)
+            {
+                uint32_t length = 0;
+                if(!ReadVarLen(trk, length) || !SkipBytes(trk, length))
+                    break;
+                continue;
+            }
+
+            uint8_t status = statusByte;
+            uint8_t data1  = 0;
+            if(status < 0x80)
+            {
+                if(trk.running == 0)
+                    break;
+                data1  = status;
+                status = trk.running;
             }
             else
             {
-                if(!SkipBytes(trk, length))
+                trk.running = status;
+                if(!ReadTrackByte(trk, data1))
                     break;
             }
-            if(type == 0x2F)
-                break;
-            continue;
-        }
 
-        if(statusByte == 0xF0 || statusByte == 0xF7)
-        {
-            uint32_t length = 0;
-            if(!ReadVarLen(trk, length) || !SkipBytes(trk, length))
+            switch(status & 0xF0)
+            {
+                case 0x80:
+                case 0x90:
+                case 0xA0:
+                case 0xB0:
+                case 0xE0:
+                {
+                    uint8_t data2 = 0;
+                    if(!ReadTrackByte(trk, data2))
+                        return;
+                }
                 break;
-            continue;
+                case 0xC0:
+                case 0xD0:
+                    break;
+                default:
+                    break;
+            }
         }
+    }
 
-        uint8_t status = statusByte;
-        uint8_t data1  = 0;
-        if(status < 0x80)
+    if(tempoCount_ == 0)
+        return;
+
+    for(uint16_t i = 1; i < tempoCount_; i++)
+    {
+        const uint32_t keyTick  = tempoTicks_[i];
+        const uint32_t keyTempo = tempoUsec_[i];
+        int            j        = (int)i - 1;
+        while(j >= 0 && tempoTicks_[j] > keyTick)
         {
-            if(trk.running == 0)
-                break;
-            data1  = status;
-            status = trk.running;
+            tempoTicks_[j + 1] = tempoTicks_[j];
+            tempoUsec_[j + 1]  = tempoUsec_[j];
+            j--;
+        }
+        tempoTicks_[j + 1] = keyTick;
+        tempoUsec_[j + 1]  = keyTempo;
+    }
+
+    uint16_t out = 0;
+    for(uint16_t i = 0; i < tempoCount_; i++)
+    {
+        if(out == 0 || tempoTicks_[i] != tempoTicks_[out - 1])
+        {
+            tempoTicks_[out] = tempoTicks_[i];
+            tempoUsec_[out]  = tempoUsec_[i];
+            out++;
         }
         else
         {
-            trk.running = status;
-            if(!ReadTrackByte(trk, data1))
-                break;
-        }
-
-        switch(status & 0xF0)
-        {
-            case 0x80:
-            case 0x90:
-            case 0xA0:
-            case 0xB0:
-            case 0xE0:
-            {
-                uint8_t data2 = 0;
-                if(!ReadTrackByte(trk, data2))
-                    return;
-            }
-            break;
-            case 0xC0:
-            case 0xD0:
-                break;
-            default:
-                break;
+            tempoUsec_[out - 1] = tempoUsec_[i];
         }
     }
+    tempoCount_ = out;
+    if(tempoCount_ > 0)
+    {
+        fileTempoUsec_ = tempoUsec_[0];
+        tempo_         = tempoUsec_[0];
+    }
+}
+
+void SmfPlayer::LoadMajorMidiSettings()
+{
+    settings_.Reset();
+    if(!open_ || path_[0] == '\0')
+        return;
+    major_midi::ReadMajorMidiMetaEvent(path_, settings_, nullptr);
+}
+
+bool SmfPlayer::HasBpmOverride() const
+{
+    return major_midi::HasMajorMidiBpmOverride(settings_);
+}
+
+uint32_t SmfPlayer::EffectiveTempoUsec() const
+{
+    if(HasBpmOverride())
+        return major_midi::MajorMidiTempoUsecPerQuarter(settings_);
+    return fileTempoUsec_;
+}
+
+bool SmfPlayer::SaveSettings()
+{
+    if(path_[0] == '\0')
+        return false;
+    return major_midi::WriteMajorMidiMetaEvent(path_, settings_);
 }

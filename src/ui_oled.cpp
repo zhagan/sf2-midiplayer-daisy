@@ -11,8 +11,8 @@ static inline uint32_t now_ms()
 }
 
 void UiOled::Init(patch_sm::DaisyPatchSM& hw,
-                  const Pins&            pins,
-                  UiBackend&             backend)
+                  const Pins&             pins,
+                  UiBackend&              backend)
 {
     hw_      = &hw;
     backend_ = &backend;
@@ -32,10 +32,11 @@ void UiOled::Init(patch_sm::DaisyPatchSM& hw,
     DisplayT::Config disp_cfg;
     disp_cfg.driver_config.transport_config.spi_config.periph = pins.spi_periph;
 
-    auto& spi_pc = disp_cfg.driver_config.transport_config.spi_config.pin_config;
-    spi_pc.sclk  = pins.sclk;
-    spi_pc.mosi  = pins.mosi;
-    spi_pc.nss   = pins.cs;
+    auto& spi_pc
+        = disp_cfg.driver_config.transport_config.spi_config.pin_config;
+    spi_pc.sclk                                              = pins.sclk;
+    spi_pc.mosi                                              = pins.mosi;
+    spi_pc.nss                                               = pins.cs;
     disp_cfg.driver_config.transport_config.pin_config.dc    = pins.dc;
     disp_cfg.driver_config.transport_config.pin_config.reset = pins.rst;
 
@@ -120,7 +121,7 @@ void UiOled::navMove_(int delta)
             break;
         case Page::System: sel_system_ = clampi_(sel_system_ + d, 0, 5); break;
         case Page::MidiFile:
-            sel_midifile_ = clampi_(sel_midifile_ + d, 0, 6);
+            sel_midifile_ = clampi_(sel_midifile_ + d, 0, 7);
             break;
         case Page::SoundFont:
             sel_soundfont_ = clampi_(sel_soundfont_ + d, 0, 12);
@@ -209,28 +210,33 @@ void UiOled::editMove_(int delta)
         {
             // 0 Back
             // 1 Load (picker)
-            // 2 BPM
-            // 3 Play
-            // 4 Loop
-            // 5 Loop Start
-            // 6 Loop Length
+            // 2 Save MIDI Settings
+            // 3 BPM
+            // 4 Play
+            // 5 Loop
+            // 6 Loop Start
+            // 7 Loop Length
             if(sel_midifile_ == 0)
                 break;
             if(sel_midifile_ == 2)
+            {
+                (void)backend_->SaveMidiSettings();
+            }
+            else if(sel_midifile_ == 3)
             {
                 int bpm = backend_->GetBpm() + (d > 0 ? step : -step);
                 bpm     = clampi_(bpm, 20, 300);
                 backend_->SetBpm(bpm);
             }
-            else if(sel_midifile_ == 3)
+            else if(sel_midifile_ == 4)
             {
                 backend_->SetPlay(!backend_->GetPlay());
             }
-            else if(sel_midifile_ == 4)
+            else if(sel_midifile_ == 5)
             {
                 backend_->SetLoop(!backend_->GetLoop());
             }
-            else if(sel_midifile_ == 5)
+            else if(sel_midifile_ == 6)
             {
                 int m = 1, b = 1, s = 1;
                 backend_->GetLoopStartMbs(&m, &b, &s);
@@ -242,7 +248,7 @@ void UiOled::editMove_(int delta)
                     s += (d > 0 ? 1 : -1);
                 backend_->SetLoopStartMbs(m, b, s);
             }
-            else if(sel_midifile_ == 6)
+            else if(sel_midifile_ == 7)
             {
                 int b = backend_->GetLoopLengthBeats() + (d > 0 ? 1 : -1);
                 backend_->SetLoopLengthBeats(clampi_(b, 1, 999));
@@ -329,37 +335,52 @@ void UiOled::editMove_(int delta)
                 break;
             if(sel_fx_ == 1)
             {
-                float t = backend_->GetFxReverbTime() + (d > 0 ? 0.02f : -0.02f);
-                if(t < 0.0f) t = 0.0f;
-                if(t > 1.0f) t = 1.0f;
+                float t
+                    = backend_->GetFxReverbTime() + (d > 0 ? 0.02f : -0.02f);
+                if(t < 0.0f)
+                    t = 0.0f;
+                if(t > 1.0f)
+                    t = 1.0f;
                 backend_->SetFxReverbTime(t);
             }
             else if(sel_fx_ == 2)
             {
-                float hz = backend_->GetFxReverbLpFreq() + (d > 0 ? 200.0f : -200.0f);
-                if(hz < 200.0f) hz = 200.0f;
-                if(hz > 18000.0f) hz = 18000.0f;
+                float hz = backend_->GetFxReverbLpFreq()
+                           + (d > 0 ? 200.0f : -200.0f);
+                if(hz < 200.0f)
+                    hz = 200.0f;
+                if(hz > 18000.0f)
+                    hz = 18000.0f;
                 backend_->SetFxReverbLpFreq(hz);
             }
             else if(sel_fx_ == 3)
             {
-                float hz = backend_->GetFxReverbHpFreq() + (d > 0 ? 50.0f : -50.0f);
-                if(hz < 20.0f) hz = 20.0f;
-                if(hz > 1000.0f) hz = 1000.0f;
+                float hz
+                    = backend_->GetFxReverbHpFreq() + (d > 0 ? 50.0f : -50.0f);
+                if(hz < 20.0f)
+                    hz = 20.0f;
+                if(hz > 1000.0f)
+                    hz = 1000.0f;
                 backend_->SetFxReverbHpFreq(hz);
             }
             else if(sel_fx_ == 4)
             {
-                float dpt = backend_->GetFxChorusDepth() + (d > 0 ? 0.02f : -0.02f);
-                if(dpt < 0.0f) dpt = 0.0f;
-                if(dpt > 1.0f) dpt = 1.0f;
+                float dpt
+                    = backend_->GetFxChorusDepth() + (d > 0 ? 0.02f : -0.02f);
+                if(dpt < 0.0f)
+                    dpt = 0.0f;
+                if(dpt > 1.0f)
+                    dpt = 1.0f;
                 backend_->SetFxChorusDepth(dpt);
             }
             else if(sel_fx_ == 5)
             {
-                float hz = backend_->GetFxChorusSpeed() + (d > 0 ? 0.05f : -0.05f);
-                if(hz < 0.05f) hz = 0.05f;
-                if(hz > 5.0f) hz = 5.0f;
+                float hz
+                    = backend_->GetFxChorusSpeed() + (d > 0 ? 0.05f : -0.05f);
+                if(hz < 0.05f)
+                    hz = 0.05f;
+                if(hz > 5.0f)
+                    hz = 5.0f;
                 backend_->SetFxChorusSpeed(hz);
             }
         }
@@ -431,6 +452,11 @@ void UiOled::onClick_()
             picker_scroll_ = 0;
             mode_          = Mode::Picker;
         }
+        else if(page_ == Page::MidiFile && sel_midifile_ == 2)
+        {
+            (void)backend_->SaveMidiSettings();
+            mode_ = Mode::Nav;
+        }
         else if(page_ == Page::SoundFont && sel_soundfont_ == 1)
         {
             picker_kind_   = PickerKind::SoundFonts;
@@ -475,7 +501,7 @@ void UiOled::onLongPress_()
         return;
     }
     // On Midi File loop start while editing: cycle M/B/S
-    if(page_ == Page::MidiFile && mode_ == Mode::Edit && sel_midifile_ == 5)
+    if(page_ == Page::MidiFile && mode_ == Mode::Edit && sel_midifile_ == 6)
     {
         if(loop_start_field_ == LoopStartField::Measure)
             loop_start_field_ = LoopStartField::Beat;
@@ -486,7 +512,6 @@ void UiOled::onLongPress_()
         dirty_ = true;
         return;
     }
-
 }
 
 void UiOled::updateActivityDecay_()
@@ -579,7 +604,8 @@ void UiOled::drawMenu_()
     display_.WriteString("Menu", Font_7x10, true);
     drawMode_(display_, 118, 0, mode_);
 
-    const char* rows[] = {"Main", "Channels", "System", "MIDI File", "SoundFont", "FX"};
+    const char* rows[]
+        = {"Main", "Channels", "System", "MIDI File", "SoundFont", "FX"};
 
     const int count   = 6;
     const int visible = 6;
@@ -615,7 +641,6 @@ void UiOled::drawMain_()
     snprintf(playLine, sizeof(playLine), "Pos %02d|%02d|%02d", pm, pb, ps);
     display_.SetCursor(0, 18);
     display_.WriteString(playLine, Font_6x8, true);
-
 }
 
 void UiOled::drawChannels_()
@@ -644,8 +669,8 @@ void UiOled::drawChannels_()
         scroll_main_ = sel_main_row_;
     if(sel_main_row_ >= scroll_main_ + visible)
         scroll_main_ = sel_main_row_ - visible + 1;
-    scroll_main_ = clampi_(
-        scroll_main_, 0, (count > visible) ? (count - visible) : 0);
+    scroll_main_
+        = clampi_(scroll_main_, 0, (count > visible) ? (count - visible) : 0);
 
     const int y0 = 20;
     for(int i = 0; i < visible; i++)
@@ -660,11 +685,11 @@ void UiOled::drawChannels_()
             continue;
         }
 
-        const int chan = idx - 1;
-        const int vol  = backend_->GetChanVolume(chan);
-        const int pan  = backend_->GetChanPan(chan);
-        const int prog = backend_->GetChanProgram(chan);
-        const bool act = activity_ms_[chan] > 0;
+        const int  chan = idx - 1;
+        const int  vol  = backend_->GetChanVolume(chan);
+        const int  pan  = backend_->GetChanPan(chan);
+        const int  prog = backend_->GetChanProgram(chan);
+        const bool act  = activity_ms_[chan] > 0;
 
         char row[24];
         snprintf(row,
@@ -687,25 +712,37 @@ void UiOled::drawFx_()
     drawMode_(display_, 118, 0, mode_);
 
     char r1[24];
-    snprintf(r1, sizeof(r1), "Rev Time: %3d", (int)(backend_->GetFxReverbTime() * 100.0f));
+    snprintf(r1,
+             sizeof(r1),
+             "Rev Time: %3d",
+             (int)(backend_->GetFxReverbTime() * 100.0f));
     char r2[24];
-    snprintf(r2, sizeof(r2), "Rev LPF: %5d", (int)backend_->GetFxReverbLpFreq());
+    snprintf(
+        r2, sizeof(r2), "Rev LPF: %5d", (int)backend_->GetFxReverbLpFreq());
     char r3[24];
-    snprintf(r3, sizeof(r3), "Rev HPF: %5d", (int)backend_->GetFxReverbHpFreq());
+    snprintf(
+        r3, sizeof(r3), "Rev HPF: %5d", (int)backend_->GetFxReverbHpFreq());
     char r4[24];
-    snprintf(r4, sizeof(r4), "Ch Depth: %3d", (int)(backend_->GetFxChorusDepth() * 100.0f));
+    snprintf(r4,
+             sizeof(r4),
+             "Ch Depth: %3d",
+             (int)(backend_->GetFxChorusDepth() * 100.0f));
     char r5[24];
-    snprintf(r5, sizeof(r5), "Ch Spd : %3d", (int)(backend_->GetFxChorusSpeed() * 100.0f));
+    snprintf(r5,
+             sizeof(r5),
+             "Ch Spd : %3d",
+             (int)(backend_->GetFxChorusSpeed() * 100.0f));
 
-    const char* rows[] = {"Back to Menu", r1, r2, r3, r4, r5};
-    const int count   = 6;
-    const int visible = 6;
+    const char* rows[]  = {"Back to Menu", r1, r2, r3, r4, r5};
+    const int   count   = 6;
+    const int   visible = 6;
 
     if(sel_fx_ < scroll_fx_)
         scroll_fx_ = sel_fx_;
     if(sel_fx_ >= scroll_fx_ + visible)
         scroll_fx_ = sel_fx_ - visible + 1;
-    scroll_fx_ = clampi_(scroll_fx_, 0, (count > visible) ? (count - visible) : 0);
+    scroll_fx_
+        = clampi_(scroll_fx_, 0, (count > visible) ? (count - visible) : 0);
 
     const int y0 = 12;
     for(int i = 0; i < visible; i++)
@@ -751,8 +788,8 @@ void UiOled::drawSystem_()
         scroll_system_ = sel_system_;
     if(sel_system_ >= scroll_system_ + visible)
         scroll_system_ = sel_system_ - visible + 1;
-    scroll_system_ = clampi_(
-        scroll_system_, 0, (count > visible) ? (count - visible) : 0);
+    scroll_system_
+        = clampi_(scroll_system_, 0, (count > visible) ? (count - visible) : 0);
 
     const int y0 = 12;
     for(int i = 0; i < visible; i++)
@@ -775,35 +812,37 @@ void UiOled::drawMidiFile_()
     char r1[32];
     snprintf(r1, sizeof(r1), "Load: /midi");
     char r2[32];
-    snprintf(r2, sizeof(r2), "BPM: %d", backend_->GetBpm());
+    snprintf(r2, sizeof(r2), "Save MIDI Settings");
     char r3[32];
-    snprintf(r3, sizeof(r3), "Play: %s", backend_->GetPlay() ? "On" : "Off");
+    snprintf(r3, sizeof(r3), "BPM: %d", backend_->GetBpm());
     char r4[32];
-    snprintf(r4, sizeof(r4), "Loop: %s", loop ? "On" : "Off");
+    snprintf(r4, sizeof(r4), "Play: %s", backend_->GetPlay() ? "On" : "Off");
     char r5[32];
-    int lm = 1, lb = 1, ls = 1;
-    backend_->GetLoopStartMbs(&lm, &lb, &ls);
-    const char ls_field =
-        (loop_start_field_ == LoopStartField::Measure
-             ? 'M'
-             : (loop_start_field_ == LoopStartField::Beat ? 'B' : 'S'));
-    if(mode_ == Mode::Edit && sel_midifile_ == 5)
-        snprintf(r5, sizeof(r5), "Loop Start: %d|%d|%d %c", lm, lb, ls, ls_field);
-    else
-        snprintf(r5, sizeof(r5), "Loop Start: %d|%d|%d", lm, lb, ls);
+    snprintf(r5, sizeof(r5), "Loop: %s", loop ? "On" : "Off");
     char r6[32];
-    snprintf(r6, sizeof(r6), "Loop Len: %d bt", backend_->GetLoopLengthBeats());
+    int  lm = 1, lb = 1, ls = 1;
+    backend_->GetLoopStartMbs(&lm, &lb, &ls);
+    const char ls_field
+        = (loop_start_field_ == LoopStartField::Measure
+               ? 'M'
+               : (loop_start_field_ == LoopStartField::Beat ? 'B' : 'S'));
+    if(mode_ == Mode::Edit && sel_midifile_ == 6)
+        snprintf(
+            r6, sizeof(r6), "Loop Start: %d|%d|%d %c", lm, lb, ls, ls_field);
+    else
+        snprintf(r6, sizeof(r6), "Loop Start: %d|%d|%d", lm, lb, ls);
+    char r7[32];
+    snprintf(r7, sizeof(r7), "Loop Len: %d bt", backend_->GetLoopLengthBeats());
+    const char* rows[] = {"Back to Menu", r1, r2, r3, r4, r5, r6, r7};
 
-    const char* rows[] = {"Back to Menu", r1, r2, r3, r4, r5, r6};
-
-    const int count   = 7;
+    const int count   = 8;
     const int visible = 6;
     if(sel_midifile_ < scroll_midifile_)
         scroll_midifile_ = sel_midifile_;
     if(sel_midifile_ >= scroll_midifile_ + visible)
         scroll_midifile_ = sel_midifile_ - visible + 1;
-    scroll_midifile_
-        = clampi_(scroll_midifile_, 0, (count > visible) ? (count - visible) : 0);
+    scroll_midifile_ = clampi_(
+        scroll_midifile_, 0, (count > visible) ? (count - visible) : 0);
 
     const int y0 = 12;
     for(int i = 0; i < visible; i++)
@@ -814,7 +853,7 @@ void UiOled::drawMidiFile_()
         int y = y0 + i * 8;
 
         const bool sel = sel_midifile_ == idx;
-        const bool dim = (!loop && (idx == 5 || idx == 6));
+        const bool dim = (!loop && (idx == 6 || idx == 7));
         drawRow_(y, rows[idx], sel, dim);
     }
 }
@@ -844,21 +883,26 @@ void UiOled::drawSoundFont_()
     char r6[24];
     snprintf(r6, sizeof(r6), "Pan: %03d", (int)backend_->GetSfPan(ch));
     char r7[24];
-    snprintf(r7, sizeof(r7), "RevSend:%03d", (int)backend_->GetSfReverbSend(ch));
+    snprintf(
+        r7, sizeof(r7), "RevSend:%03d", (int)backend_->GetSfReverbSend(ch));
     char r8[24];
-    snprintf(r8, sizeof(r8), "ChoSend:%03d", (int)backend_->GetSfChorusSend(ch));
+    snprintf(
+        r8, sizeof(r8), "ChoSend:%03d", (int)backend_->GetSfChorusSend(ch));
     char r9[24];
     snprintf(
         r9, sizeof(r9), "VelMod: %03d", (int)backend_->GetSfVelocityMod(ch));
     char r10[24];
-    snprintf(r10, sizeof(r10), "PitchMod:%03d", (int)backend_->GetSfPitchMod(ch));
+    snprintf(
+        r10, sizeof(r10), "PitchMod:%03d", (int)backend_->GetSfPitchMod(ch));
     char r11[24];
-    snprintf(r11, sizeof(r11), "ModWheel:%03d", (int)backend_->GetSfModWheel(ch));
+    snprintf(
+        r11, sizeof(r11), "ModWheel:%03d", (int)backend_->GetSfModWheel(ch));
     char r12[24];
-    snprintf(r12, sizeof(r12), "PitchBnd:%d", (int)backend_->GetSfPitchbend(ch));
+    snprintf(
+        r12, sizeof(r12), "PitchBnd:%d", (int)backend_->GetSfPitchbend(ch));
 
-    const char* rows[] = {
-        "Back to Menu", r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12};
+    const char* rows[]
+        = {"Back to Menu", r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12};
     const int count = 13;
 
     const int visible = 6;
@@ -886,7 +930,7 @@ void UiOled::drawPicker_()
     else
         count = backend_->GetSoundFontCount();
 
-    const int total = count + 1; // +1 for Back
+    const int total   = count + 1; // +1 for Back
     const int visible = 6;
 
     picker_sel_ = clampi_(picker_sel_, 0, total - 1);
@@ -918,10 +962,10 @@ void UiOled::drawPicker_()
         }
         else
         {
-            const int file_idx = idx - 1;
-            const char* nm     = (picker_kind_ == PickerKind::MidiFiles)
-                                     ? backend_->GetMidiFileName(file_idx)
-                                     : backend_->GetSoundFontName(file_idx);
+            const int   file_idx = idx - 1;
+            const char* nm       = (picker_kind_ == PickerKind::MidiFiles)
+                                       ? backend_->GetMidiFileName(file_idx)
+                                       : backend_->GetSoundFontName(file_idx);
             if(!nm)
                 nm = "";
             snprintf(line, sizeof(line), "%.22s", nm);
@@ -931,7 +975,6 @@ void UiOled::drawPicker_()
         display_.WriteString(idx == picker_sel_ ? ">" : " ", Font_6x8, true);
         display_.WriteString(line, Font_6x8, true);
     }
-
 }
 
 // ---- formatting/helpers ----

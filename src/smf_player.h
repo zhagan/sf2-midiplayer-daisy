@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "scheduler.h"
+#include "major_midi_settings.h"
 
 extern "C"
 {
@@ -29,9 +30,13 @@ class SmfPlayer
     uint32_t TempoUsecPerQuarter() const { return tempo_; }
     uint64_t SamplesFromTicks(uint64_t ticks) const;
     uint64_t SamplesFromTicksRange(uint64_t startTicks, uint64_t lengthTicks) const;
+    uint64_t TicksFromSamples(uint64_t samples) const;
     uint8_t TimeSigNumerator() const { return ts_num_; }
     uint8_t TimeSigDenominator() const { return ts_den_; }
     const char* GetTrackNameForChannel(uint8_t ch) const;
+    const major_midi::MajorMidiSettings& Settings() const { return settings_; }
+    major_midi::MajorMidiSettings& MutableSettings() { return settings_; }
+    bool SaveSettings();
 
     // Parses ahead and pushes timestamped events
     void Pump(EventQueue<2048>& queue, uint64_t sampleNow);
@@ -45,6 +50,7 @@ class SmfPlayer
         uint32_t remaining = 0;
         uint8_t  running = 0;
         double   sampleFrac = 0.0;
+        uint64_t tickOffset = 0;
         uint64_t sampleOffset = 0;
         bool     finished = false;
         bool     hasEvent = false;
@@ -57,10 +63,15 @@ class SmfPlayer
     bool ReadVarLen(TrackState& trk, uint32_t& value);
     bool SkipBytes(TrackState& trk, uint32_t count);
     bool SeekTrackHeader(uint32_t& length);
+    void LoadMajorMidiSettings();
+    bool HasBpmOverride() const;
+    uint32_t EffectiveTempoUsec() const;
     void UpdateSamplesPerTick();
     void BuildTempoMap();
+    void InsertTempoPoint(uint32_t tick, uint32_t tempo);
 
     FIL      file_;
+    char     path_[64]{};
     bool     open_            = false;
     bool     playing_         = false;
     uint16_t trackCount_      = 0;
@@ -78,6 +89,7 @@ class SmfPlayer
 
     uint16_t divisions_       = 480;
     uint32_t tempo_           = 500000;
+    uint32_t fileTempoUsec_   = 500000;
     double   samplesPerTick_  = 0.0;
     uint8_t  ts_num_          = 4;
     uint8_t  ts_den_          = 4;
@@ -85,4 +97,5 @@ class SmfPlayer
     uint16_t tempoCount_      = 0;
     uint32_t tempoTicks_[kMaxTempoPoints]{};
     uint32_t tempoUsec_[kMaxTempoPoints]{};
+    major_midi::MajorMidiSettings settings_{};
 };
