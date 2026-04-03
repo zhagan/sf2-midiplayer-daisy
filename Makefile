@@ -11,12 +11,15 @@ USE_DAISYSP_LGPL = 1
 
 CPP_SOURCES = \
   src/main.cpp \
-  src/clock_sync.cpp \
   src/sd_mount.cpp \
   src/synth_tsf.cpp \
   src/smf_player.cpp \
   src/major_midi_settings.cpp \
-  src/ui_oled.cpp
+  src/media_library.cpp \
+  src/ui_input.cpp \
+  src/ui_controller.cpp \
+  src/ui_renderer.cpp \
+  src/mixer_transport.cpp
 
 LIBDAISY_DIR = ../../libDaisy/
 DAISYSP_DIR  = ../../DaisySP/

@@ -163,7 +163,8 @@ void SmfPlayer::SetTempoScale(float scale, uint64_t sampleNow)
     if(!playing_ || old_spt <= 0.0 || new_spt <= 0.0)
         return;
 
-    const uint64_t play_pos = (sampleNow >= startSample_) ? (sampleNow - startSample_) : 0;
+    const uint64_t play_pos
+        = seekSample_ + ((sampleNow >= startSample_) ? (sampleNow - startSample_) : 0);
     const double   ratio    = new_spt / old_spt;
 
     for(uint16_t i = 0; i < trackCount_; i++)
@@ -181,7 +182,10 @@ void SmfPlayer::SetTempoScale(float scale, uint64_t sampleNow)
 
         tracks_[i].sampleOffset   = new_offset;
         tracks_[i].sampleFrac     = 0.0;
-        tracks_[i].nextEv.atSample = startSample_ + tracks_[i].sampleOffset;
+        const uint64_t rel_sample = (tracks_[i].sampleOffset >= seekSample_)
+                                        ? (tracks_[i].sampleOffset - seekSample_)
+                                        : 0;
+        tracks_[i].nextEv.atSample = startSample_ + rel_sample;
     }
 }
 
@@ -191,6 +195,7 @@ void SmfPlayer::Start(uint64_t sampleNow)
     {
         playing_     = true;
         startSample_ = sampleNow;
+        seekSample_  = 0;
         for(uint16_t i = 0; i < trackCount_; i++)
         {
             tracks_[i].pos          = tracks_[i].start;
@@ -220,7 +225,8 @@ void SmfPlayer::SeekToSample(uint64_t targetSample, uint64_t nowSample)
         return;
 
     playing_     = true;
-    startSample_ = (nowSample >= targetSample) ? (nowSample - targetSample) : 0;
+    startSample_ = nowSample;
+    seekSample_  = targetSample;
 
     for(uint16_t i = 0; i < trackCount_; i++)
     {
@@ -260,7 +266,7 @@ bool SmfPlayer::IsPlaying() const
     return playing_;
 }
 
-void SmfPlayer::Pump(EventQueue<2048>& queue, uint64_t sampleNow)
+void SmfPlayer::Pump(EventQueue<1024>& queue, uint64_t sampleNow)
 {
     if(!open_ || !playing_)
         return;
@@ -320,7 +326,9 @@ bool SmfPlayer::ParseNextEvent(uint16_t trackIndex, TrackState& trk, MidiEv& out
         trk.tickOffset += deltaTicks;
         trk.sampleOffset = SamplesFromTicks(trk.tickOffset);
         trk.sampleFrac = 0.0;
-        const uint64_t eventSample = startSample_ + trk.sampleOffset;
+        const uint64_t relSample
+            = (trk.sampleOffset >= seekSample_) ? (trk.sampleOffset - seekSample_) : 0;
+        const uint64_t eventSample = startSample_ + relSample;
 
         uint8_t statusByte = 0;
         if(!ReadTrackByte(trk, statusByte))

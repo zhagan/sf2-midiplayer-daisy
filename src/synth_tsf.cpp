@@ -143,6 +143,11 @@ static float   g_reverb_hp_zl = 0.0f;
 static float   g_reverb_hp_zr = 0.0f;
 static float   g_reverb_hp_xl = 0.0f;
 static float   g_reverb_hp_xr = 0.0f;
+static float   g_reverb_time = 0.85f;
+static float   g_reverb_lpf_hz = 8000.0f;
+static float   g_reverb_hpf_hz = 80.0f;
+static float   g_chorus_depth = 0.35f;
+static float   g_chorus_speed_hz = 0.25f;
 
 bool SynthInit()
 {
@@ -343,6 +348,7 @@ void SynthSetReverbTime(float t01)
         t01 = 0.0f;
     if(t01 > 1.0f)
         t01 = 1.0f;
+    g_reverb_time = t01;
     g_reverb.SetFeedback(t01);
 }
 
@@ -350,6 +356,7 @@ void SynthSetReverbLpFreq(float hz)
 {
     if(hz < 20.0f)
         hz = 20.0f;
+    g_reverb_lpf_hz = hz;
     g_reverb.SetLpFreq(hz);
 }
 
@@ -359,6 +366,7 @@ void SynthSetReverbHpFreq(float hz)
         hz = 20.0f;
     if(hz > 1000.0f)
         hz = 1000.0f;
+    g_reverb_hpf_hz = hz;
     // one-pole HPF coefficient
     const float x  = expf(-2.0f * 3.14159265f * hz / g_sample_rate);
     g_reverb_hp_a = x;
@@ -369,6 +377,7 @@ void SynthSetChorusDepth(float d01)
         d01 = 0.0f;
     if(d01 > 1.0f)
         d01 = 1.0f;
+    g_chorus_depth = d01;
     g_chorus.SetLfoDepth(d01);
 }
 
@@ -379,5 +388,31 @@ void SynthSetChorusSpeed(float hz)
         hz = 0.05f;
     if(hz > 5.0f)
         hz = 5.0f;
+    g_chorus_speed_hz = hz;
     g_chorus.SetLfoFreq(hz);
+}
+
+float SynthGetReverbTime()
+{
+    return g_reverb_time;
+}
+
+float SynthGetReverbLpFreq()
+{
+    return g_reverb_lpf_hz;
+}
+
+float SynthGetReverbHpFreq()
+{
+    return g_reverb_hpf_hz;
+}
+
+float SynthGetChorusDepth()
+{
+    return g_chorus_depth;
+}
+
+float SynthGetChorusSpeed()
+{
+    return g_chorus_speed_hz;
 }

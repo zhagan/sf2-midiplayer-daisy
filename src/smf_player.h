@@ -28,6 +28,7 @@ class SmfPlayer
     double SamplesPerQuarterF() const { return samplesPerTick_ * double(divisions_); }
     uint16_t Divisions() const { return divisions_; }
     uint32_t TempoUsecPerQuarter() const { return tempo_; }
+    uint64_t LookaheadSamples() const { return lookahead_; }
     uint64_t SamplesFromTicks(uint64_t ticks) const;
     uint64_t SamplesFromTicksRange(uint64_t startTicks, uint64_t lengthTicks) const;
     uint64_t TicksFromSamples(uint64_t samples) const;
@@ -39,7 +40,7 @@ class SmfPlayer
     bool SaveSettings();
 
     // Parses ahead and pushes timestamped events
-    void Pump(EventQueue<2048>& queue, uint64_t sampleNow);
+    void Pump(EventQueue<1024>& queue, uint64_t sampleNow);
 
   private:
     struct TrackState
@@ -85,6 +86,7 @@ class SmfPlayer
     float    sr_              = 48000.0f;
     uint64_t lookahead_       = 0;
     uint64_t startSample_     = 0;
+    uint64_t seekSample_      = 0;
     float    tempo_scale_     = 1.0f;
 
     uint16_t divisions_       = 480;

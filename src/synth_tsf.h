@@ -42,3 +42,8 @@ void SynthSetReverbLpFreq(float hz);
 void SynthSetReverbHpFreq(float hz);
 void SynthSetChorusDepth(float d01);
 void SynthSetChorusSpeed(float hz);
+float SynthGetReverbTime();
+float SynthGetReverbLpFreq();
+float SynthGetReverbHpFreq();
+float SynthGetChorusDepth();
+float SynthGetChorusSpeed();
