@@ -44,6 +44,17 @@ uint32_t          channel_flash_until[16]{};
 
 constexpr uint32_t kLedFlashMs = 90;
 
+void ServiceIncomingMidi()
+{
+    usb_midi.Listen();
+    while(usb_midi.HasEvents())
+        transport.HandleMidiMessage(usb_midi.PopEvent(), app_state);
+
+    uart_midi.Listen();
+    while(uart_midi.HasEvents())
+        transport.HandleMidiMessage(uart_midi.PopEvent(), app_state);
+}
+
 void SyncFxStateFromSynth()
 {
     app_state.fx_reverb_time     = SynthGetReverbTime();
@@ -164,6 +175,7 @@ bool EnsureAudioRunning()
                          size_t                    size) {
             hw.ProcessAnalogControls();
             ui_input.ControlRateTick();
+            ServiceIncomingMidi();
             transport.ProcessAudio(in, out, size);
         });
         audio_started = true;
@@ -309,14 +321,6 @@ int main(void)
                        smf_player.SaveSettings() ? "MIDI Saved" : "Save Failed",
                        now);
         }
-
-        usb_midi.Listen();
-        while(usb_midi.HasEvents())
-            transport.HandleMidiMessage(usb_midi.PopEvent(), app_state);
-
-        uart_midi.Listen();
-        while(uart_midi.HasEvents())
-            transport.HandleMidiMessage(uart_midi.PopEvent(), app_state);
 
         if(audio_started)
             transport.Update(app_state);
