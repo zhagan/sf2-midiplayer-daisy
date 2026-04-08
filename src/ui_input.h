@@ -16,6 +16,7 @@ struct RawInputState
     bool  bank_buttons[4]{};
     bool  play_button   = false;
     bool  shift         = false;
+    bool  sync_external = false;
     int   encoder_delta = 0;
 };
 

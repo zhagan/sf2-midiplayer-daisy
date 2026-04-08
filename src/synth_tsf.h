@@ -9,6 +9,8 @@ bool SynthInit();
 bool SynthLoadSf2(const char* path, float sampleRate, int maxVoices);
 // Unload current SoundFont (clears tsf + closes file)
 void SynthUnloadSf2();
+int  SynthActiveVoiceCount();
+void SynthSetMaxVoices(int maxVoices);
 // Arena diagnostics
 size_t SynthArenaUsed();
 size_t SynthArenaCap();
@@ -42,6 +44,7 @@ void SynthSetReverbLpFreq(float hz);
 void SynthSetReverbHpFreq(float hz);
 void SynthSetChorusDepth(float d01);
 void SynthSetChorusSpeed(float hz);
+void SynthSetExternalGain(float gain);
 float SynthGetReverbTime();
 float SynthGetReverbLpFreq();
 float SynthGetReverbHpFreq();

@@ -16,6 +16,9 @@ CPP_SOURCES = \
   src/smf_player.cpp \
   src/major_midi_settings.cpp \
   src/media_library.cpp \
+  src/clock_sync.cpp \
+  src/cv_gate_persist.cpp \
+  src/cv_gate_engine.cpp \
   src/ui_input.cpp \
   src/ui_controller.cpp \
   src/ui_renderer.cpp \

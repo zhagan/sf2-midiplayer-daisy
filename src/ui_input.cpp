@@ -7,6 +7,7 @@ namespace major_midi
 namespace
 {
 constexpr uint32_t kEncoderLongPressMs = 700;
+constexpr uint8_t kSyncSwitchPin = 9;   // MCP GPB1
 constexpr uint8_t kEncSwitchPin  = 10; // MCP GPB2
 constexpr uint8_t kPlayButtonPin = 11; // MCP GPB3
 constexpr uint8_t kBankButton0   = 12; // MCP GPB4
@@ -58,6 +59,7 @@ void UiHardwareInput::Sample(RawInputState& state)
 
     state.encoder_delta   = pending_encoder_delta_;
     pending_encoder_delta_ = 0;
+    state.sync_external   = mcp_.GetPin(kSyncSwitchPin) == 0;
     state.shift           = mcp_.GetPin(kEncSwitchPin) == 0;
     state.play_button     = mcp_.GetPin(kPlayButtonPin) == 0;
     state.bank_buttons[0] = mcp_.GetPin(kBankButton0) == 0;

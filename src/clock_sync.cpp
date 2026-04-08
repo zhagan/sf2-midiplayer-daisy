@@ -60,9 +60,7 @@ void ClockSync::SetUseExternalClock(bool useExternal)
     use_external_ = useExternal;
     if(use_external_)
     {
-        locked_ = false;
-        last_edge_time_ = 0;
-        edge_expected_time_ = 0.0;
+        ResetExternalLockState();
         if(last_process_time_ != 0)
         {
             const uint64_t sp16 = (uint64_t)std::lround(samples_per_16th_);
@@ -70,6 +68,18 @@ void ClockSync::SetUseExternalClock(bool useExternal)
                 next_boundary_time_ = last_process_time_ + sp16;
         }
     }
+}
+
+void ClockSync::ResetExternalLockState()
+{
+    locked_              = false;
+    running_             = false;
+    last_edge_time_      = 0;
+    edge_expected_time_  = 0.0;
+    sp16_est_            = 0.0f;
+    last_measured_sp16_  = 0.0f;
+    pending_external_steps_ = 0;
+    external_step_phase_ = 0.0f;
 }
 
 float ClockSync::EdgeDtToSamplesPer16th(uint64_t dt) const
@@ -160,9 +170,9 @@ void ClockSync::ProcessSample(bool clockPinHigh, uint64_t globalSampleTime)
         if(last_edge_time_ != 0 && missing_timeout_samples_ > 0
            && (globalSampleTime - last_edge_time_) > missing_timeout_samples_)
         {
-            locked_ = false;
-            if(!cfg_.free_run_on_missing)
-                running_ = false;
+            ResetExternalLockState();
+            if(cfg_.free_run_on_missing)
+                running_ = true;
         }
 
         if(sp16_est_ > 0.0f)

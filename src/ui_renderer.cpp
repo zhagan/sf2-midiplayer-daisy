@@ -11,6 +11,14 @@ namespace major_midi
 
 namespace
 {
+void FormatPerfValue(char* out, size_t out_sz, uint8_t value)
+{
+    if(value == 0)
+        std::snprintf(out, out_sz, "-");
+    else
+        std::snprintf(out, out_sz, "%03d", static_cast<int>(value));
+}
+
 void CopyTrunc(const char* src, char* dst, size_t dst_sz)
 {
     if(dst_sz == 0)
@@ -40,37 +48,18 @@ void CopyTrunc(const char* src, char* dst, size_t dst_sz)
     std::memcpy(dst + copy_len, "...", 4);
 }
 
-const char* VisibleValue(const AppState& state, int ch, char* out, size_t out_sz)
-{
-    const ChannelState& channel = state.channels[ch];
-    switch(state.knob_page)
-    {
-        case KnobPage::Volume:
-            std::snprintf(out, out_sz, "%3d", channel.volume);
-            break;
-        case KnobPage::Pan:
-            std::snprintf(out, out_sz, "%3d", channel.pan);
-            break;
-        case KnobPage::ReverbSend:
-            std::snprintf(out, out_sz, "%3d", channel.reverb_send);
-            break;
-        case KnobPage::ChorusSend:
-            std::snprintf(out, out_sz, "%3d", channel.chorus_send);
-            break;
-    }
-    return out;
-}
-
 size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
 {
     switch(state.menu_page)
     {
-        case MenuPage::Main: return 5;
+        case MenuPage::Main: return 7;
         case MenuPage::Fx: return 6;
         case MenuPage::Song: return 6;
-        case MenuPage::Sf2: return 8;
+        case MenuPage::Sf2: return 10;
+        case MenuPage::CvGate: return CvGateVisibleItemCount(state.cv_gate);
         case MenuPage::LoadMidi: return 1 + library.MidiCount();
         case MenuPage::LoadSf2: return 1 + library.SoundFontCount();
+        case MenuPage::SaveAllConfirm: return 2;
     }
     return 0;
 }
@@ -105,12 +94,21 @@ void UiRenderer::Init()
     display_.Init(display_config);
 }
 
+void UiRenderer::ShowSplash()
+{
+    display_.Fill(false);
+    display_.SetCursor(24, 22);
+    display_.WriteString("Major", Font_11x18, true);
+    display_.SetCursor(24, 44);
+    display_.WriteString("MIDI", Font_11x18, true);
+    display_.Update();
+}
+
 void UiRenderer::Render(const AppState& state,
                         const MediaLibrary& library,
                         uint32_t now_ms)
 {
     char line[32];
-    char value[8];
     char midi_name[20];
     char sf2_name[20];
 
@@ -119,7 +117,32 @@ void UiRenderer::Render(const AppState& state,
 
     display_.Fill(false);
 
-    if(state.ui_mode == UiMode::Menu)
+    if(state.saving_all)
+    {
+        display_.SetCursor(0, 8);
+        display_.WriteString("Saving Settings", Font_7x10, true);
+        display_.SetCursor(0, 24);
+        display_.WriteString(midi_name[0] ? midi_name : "No MIDI", Font_6x8, true);
+        display_.SetCursor(0, 34);
+        display_.WriteString(sf2_name[0] ? sf2_name : "No SF2", Font_6x8, true);
+        display_.SetCursor(0, 48);
+        display_.WriteString("Please wait...", Font_6x8, true);
+    }
+    else if(state.loading_midi || state.loading_sf2)
+    {
+        display_.SetCursor(0, 8);
+        display_.WriteString(state.loading_midi ? "Loading MIDI" : "Loading SF2",
+                             Font_7x10,
+                             true);
+        display_.SetCursor(0, 24);
+        display_.WriteString(state.loading_midi ? (midi_name[0] ? midi_name : "None")
+                                                : (sf2_name[0] ? sf2_name : "None"),
+                             Font_6x8,
+                             true);
+        display_.SetCursor(0, 40);
+        display_.WriteString("Please wait...", Font_6x8, true);
+    }
+    else if(state.ui_mode == UiMode::Menu)
     {
         display_.SetCursor(0, 0);
         display_.WriteString("MAIN MENU", Font_6x8, true);
@@ -130,13 +153,15 @@ void UiRenderer::Render(const AppState& state,
             "FX Settings",
             "Song Settings",
             "SF2 Settings",
+            "CV/Gate",
+            "Save All",
         };
 
         for(int row = 0; row < 4; row++)
         {
             const size_t idx = state.menu_root_cursor >= 4 ? state.menu_root_cursor - 3 + row
                                                            : static_cast<size_t>(row);
-            if(idx >= 5)
+            if(idx >= 7)
                 break;
             std::snprintf(line,
                           sizeof(line),
@@ -194,13 +219,54 @@ void UiRenderer::Render(const AppState& state,
                 switch(item)
                 {
                     case 0: std::snprintf(line, sizeof(line), "%cBack to Menu", item == state.menu_page_cursor ? '>' : ' '); break;
-                    case 1: std::snprintf(line, sizeof(line), "%cChannel %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.sf2_channel) + 1); break;
-                    case 2: std::snprintf(line, sizeof(line), "%cMute %s", item == state.menu_page_cursor ? '>' : ' ', channel.muted ? "On" : "Off"); break;
-                    case 3: std::snprintf(line, sizeof(line), "%cVolume %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(channel.volume)); break;
-                    case 4: std::snprintf(line, sizeof(line), "%cPan %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(channel.pan)); break;
-                    case 5: std::snprintf(line, sizeof(line), "%cRevSend %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(channel.reverb_send)); break;
-                    case 6: std::snprintf(line, sizeof(line), "%cChoSend %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(channel.chorus_send)); break;
-                    case 7: std::snprintf(line, sizeof(line), "%cTrans %4d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.sf2_transpose)); break;
+                    case 1: std::snprintf(line, sizeof(line), "%cVoices %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.sf2_max_voices)); break;
+                    case 2: std::snprintf(line, sizeof(line), "%cChannel %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.sf2_channel) + 1); break;
+                    case 3: std::snprintf(line, sizeof(line), "%cMute %s", item == state.menu_page_cursor ? '>' : ' ', channel.muted ? "On" : "Off"); break;
+                    case 4: std::snprintf(line, sizeof(line), "%cVolume %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(channel.volume)); break;
+                    case 5: std::snprintf(line, sizeof(line), "%cPan %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(channel.pan)); break;
+                    case 6: std::snprintf(line, sizeof(line), "%cRevSend %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(channel.reverb_send)); break;
+                    case 7: std::snprintf(line, sizeof(line), "%cChoSend %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(channel.chorus_send)); break;
+                    case 8:
+                        if(channel.program_override >= 0)
+                            std::snprintf(line,
+                                          sizeof(line),
+                                          "%cProgram %03d",
+                                          item == state.menu_page_cursor ? '>' : ' ',
+                                          static_cast<int>(channel.program_override));
+                        else
+                            std::snprintf(line,
+                                          sizeof(line),
+                                          "%cProgram File",
+                                          item == state.menu_page_cursor ? '>' : ' ');
+                        break;
+                    case 9: std::snprintf(line, sizeof(line), "%cTrans %4d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.sf2_transpose)); break;
+                }
+            }
+            else if(state.menu_page == MenuPage::CvGate)
+            {
+                switch(CvGateVisibleItemAt(state.cv_gate, item))
+                {
+                    case CvGateMenuItem::Back: std::snprintf(line, sizeof(line), "%cBack to Menu", item == state.menu_page_cursor ? '>' : ' '); break;
+                    case CvGateMenuItem::Cv1Mode: std::snprintf(line, sizeof(line), "%cCV1 Mode %s", item == state.menu_page_cursor ? '>' : ' ', CvInModeName(state.cv_gate.cv_in[0].mode)); break;
+                    case CvGateMenuItem::Cv1Channel: std::snprintf(line, sizeof(line), "%cCV1 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_in[0].channel) + 1); break;
+                    case CvGateMenuItem::Cv1Cc: std::snprintf(line, sizeof(line), "%cCV1 CC %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_in[0].cc)); break;
+                    case CvGateMenuItem::Cv2Mode: std::snprintf(line, sizeof(line), "%cCV2 Mode %s", item == state.menu_page_cursor ? '>' : ' ', CvInModeName(state.cv_gate.cv_in[1].mode)); break;
+                    case CvGateMenuItem::Cv2Channel: std::snprintf(line, sizeof(line), "%cCV2 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_in[1].channel) + 1); break;
+                    case CvGateMenuItem::Cv2Cc: std::snprintf(line, sizeof(line), "%cCV2 CC %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_in[1].cc)); break;
+                    case CvGateMenuItem::Gate1Mode: std::snprintf(line, sizeof(line), "%cG1 Mode %s", item == state.menu_page_cursor ? '>' : ' ', GateOutModeName(state.cv_gate.gate_out[0].mode)); break;
+                    case CvGateMenuItem::Gate1Channel: std::snprintf(line, sizeof(line), "%cG1 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.gate_out[0].channel) + 1); break;
+                    case CvGateMenuItem::Gate1Resolution: std::snprintf(line, sizeof(line), "%cG1 Res %s", item == state.menu_page_cursor ? '>' : ' ', SyncResolutionName(state.cv_gate.gate_out[0].sync_resolution)); break;
+                    case CvGateMenuItem::Gate2Mode: std::snprintf(line, sizeof(line), "%cG2 Mode %s", item == state.menu_page_cursor ? '>' : ' ', GateOutModeName(state.cv_gate.gate_out[1].mode)); break;
+                    case CvGateMenuItem::Gate2Channel: std::snprintf(line, sizeof(line), "%cG2 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.gate_out[1].channel) + 1); break;
+                    case CvGateMenuItem::Gate2Resolution: std::snprintf(line, sizeof(line), "%cG2 Res %s", item == state.menu_page_cursor ? '>' : ' ', SyncResolutionName(state.cv_gate.gate_out[1].sync_resolution)); break;
+                    case CvGateMenuItem::CvOut1Mode: std::snprintf(line, sizeof(line), "%cO1 Mode %s", item == state.menu_page_cursor ? '>' : ' ', CvOutModeName(state.cv_gate.cv_out[0].mode)); break;
+                    case CvGateMenuItem::CvOut1Channel: std::snprintf(line, sizeof(line), "%cO1 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_out[0].channel) + 1); break;
+                    case CvGateMenuItem::CvOut1Cc: std::snprintf(line, sizeof(line), "%cO1 CC %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_out[0].cc)); break;
+                    case CvGateMenuItem::CvOut1Priority: std::snprintf(line, sizeof(line), "%cO1 Pri %s", item == state.menu_page_cursor ? '>' : ' ', NotePriorityName(state.cv_gate.cv_out[0].priority)); break;
+                    case CvGateMenuItem::CvOut2Mode: std::snprintf(line, sizeof(line), "%cO2 Mode %s", item == state.menu_page_cursor ? '>' : ' ', CvOutModeName(state.cv_gate.cv_out[1].mode)); break;
+                    case CvGateMenuItem::CvOut2Channel: std::snprintf(line, sizeof(line), "%cO2 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_out[1].channel) + 1); break;
+                    case CvGateMenuItem::CvOut2Cc: std::snprintf(line, sizeof(line), "%cO2 CC %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_out[1].cc)); break;
+                    case CvGateMenuItem::CvOut2Priority: std::snprintf(line, sizeof(line), "%cO2 Pri %s", item == state.menu_page_cursor ? '>' : ' ', NotePriorityName(state.cv_gate.cv_out[1].priority)); break;
                 }
             }
             else if(state.menu_page == MenuPage::LoadMidi)
@@ -236,6 +302,14 @@ void UiRenderer::Render(const AppState& state,
                                   item == state.menu_page_cursor ? '>' : ' ',
                                   short_name);
                 }
+            }
+            else if(state.menu_page == MenuPage::SaveAllConfirm)
+            {
+                std::snprintf(line,
+                              sizeof(line),
+                              "%c%s",
+                              item == state.menu_page_cursor ? '>' : ' ',
+                              item == 0 ? "Confirm Save" : "Cancel");
             }
             else
             {
@@ -298,13 +372,21 @@ void UiRenderer::Render(const AppState& state,
     }
     else
     {
+        const int ch0 = VisibleChannelIndex(state.bank, 0);
+        const int ch1 = VisibleChannelIndex(state.bank, 1);
+        const int ch2 = VisibleChannelIndex(state.bank, 2);
+        const int ch3 = VisibleChannelIndex(state.bank, 3);
+        const int col_x[4] = {20, 47, 74, 101};
+        const int row_y[5] = {24, 32, 40, 48, 56};
+
         std::snprintf(line,
                       sizeof(line),
-                      "%s %3d B%d %s",
+                      "%s %3d M%03d B%d %s",
                       state.transport_playing ? "PLY" : "STP",
                       state.bpm,
+                      static_cast<int>(state.current_measure),
                       static_cast<int>(state.bank) + 1,
-                      KnobPageName(state.knob_page));
+                      KnobPageShortName(state.knob_page));
         display_.SetCursor(0, 0);
         display_.WriteString(line, Font_6x8, true);
 
@@ -316,24 +398,57 @@ void UiRenderer::Render(const AppState& state,
         display_.SetCursor(0, 16);
         display_.WriteString(line, Font_6x8, true);
 
-        for(int row = 0; row < 4; row++)
+        display_.SetCursor(0, row_y[0]);
+        display_.WriteString("Ch", Font_6x8, true);
+        display_.SetCursor(0, row_y[1]);
+        display_.WriteString("V", Font_6x8, true);
+        display_.SetCursor(0, row_y[2]);
+        display_.WriteString("P", Font_6x8, true);
+        display_.SetCursor(0, row_y[3]);
+        display_.WriteString("R", Font_6x8, true);
+        display_.SetCursor(0, row_y[4]);
+        display_.WriteString(state.knob_page == KnobPage::Program ? "G" : "C",
+                             Font_6x8,
+                             true);
+
+        const int channels[4] = {ch0, ch1, ch2, ch3};
+        for(int i = 0; i < 4; i++)
         {
-            const int ch = VisibleChannelIndex(state.bank, row);
+            const ChannelState& channel = state.channels[channels[i]];
+
             std::snprintf(line,
                           sizeof(line),
-                          "%2d %s %c%c",
-                          ch + 1,
-                          VisibleValue(state, ch, value, sizeof(value)),
-                          state.channels[ch].muted ? 'M' : '-',
-                          state.mute_all ? 'A' : '-');
-            display_.SetCursor(0, 24 + row * 8);
+                          "%c%02d",
+                          channel.muted ? '*' : ' ',
+                          channels[i] + 1);
+            display_.SetCursor(col_x[i], row_y[0]);
+            display_.WriteString(line, Font_6x8, true);
+
+            FormatPerfValue(line, sizeof(line), channel.volume);
+            display_.SetCursor(col_x[i], row_y[1]);
+            display_.WriteString(line, Font_6x8, true);
+
+            FormatPerfValue(line, sizeof(line), channel.pan);
+            display_.SetCursor(col_x[i], row_y[2]);
+            display_.WriteString(line, Font_6x8, true);
+
+            FormatPerfValue(line, sizeof(line), channel.reverb_send);
+            display_.SetCursor(col_x[i], row_y[3]);
+            display_.WriteString(line, Font_6x8, true);
+
+            const uint8_t bottom_value
+                = state.knob_page == KnobPage::Program
+                      ? static_cast<uint8_t>(channel.program_override >= 0
+                                                 ? channel.program_override
+                                                 : channel.current_program)
+                      : channel.chorus_send;
+            FormatPerfValue(line, sizeof(line), bottom_value);
+            display_.SetCursor(col_x[i], row_y[4]);
             display_.WriteString(line, Font_6x8, true);
         }
     }
 
-    if(state.overlay.until_ms > now_ms
-       && state.ui_mode != UiMode::Menu
-       && state.ui_mode != UiMode::MenuPage)
+    if(state.overlay.until_ms > now_ms)
     {
         display_.DrawRect(0, 54, 128, 10, true, true);
         display_.SetCursor(2, 56);

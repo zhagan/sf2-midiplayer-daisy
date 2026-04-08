@@ -20,6 +20,7 @@ class UiController
     void ExitMenu(uint32_t now_ms);
     void EnterMenuPage(MenuPage page, uint32_t now_ms);
     void ExitMenuPage(uint32_t now_ms);
+    void HandlePerformanceBankButton(uint8_t bank, uint32_t now_ms);
     void ResetKnobPickup();
     void SetMode(UiMode mode, uint32_t now_ms, const char* overlay);
     void CycleKnobPage(uint32_t now_ms);
@@ -36,6 +37,8 @@ class UiController
 
     AppState* state_ = nullptr;
     bool      knob_caught_[4]{};
+    uint8_t   last_bank_button_      = 0xFF;
+    uint32_t  last_bank_button_ms_   = 0;
 };
 
 } // namespace major_midi

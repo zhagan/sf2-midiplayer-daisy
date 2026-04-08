@@ -14,6 +14,7 @@ class UiRenderer
     using DisplayT = daisy::OledDisplay<daisy::SSD130xI2c128x64Driver>;
 
     void Init();
+    void ShowSplash();
     void Render(const AppState& state, const MediaLibrary& library, uint32_t now_ms);
 
   private:

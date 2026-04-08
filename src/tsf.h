@@ -2820,7 +2820,7 @@ extern "C"
     TSFDEF int tsf_set_max_voices(tsf* f, int max_voices)
     {
         int i           = f->voiceNum;
-        int newVoiceNum = (f->voiceNum > max_voices ? f->voiceNum : max_voices);
+        int newVoiceNum = max_voices;
         struct tsf_voice* newVoices = (struct tsf_voice*)TSF_REALLOC(
             f->voices, newVoiceNum * sizeof(struct tsf_voice));
         if(!newVoices)

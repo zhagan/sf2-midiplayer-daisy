@@ -1,4 +1,5 @@
 #include "mixer_transport.h"
+#include <cstring>
 #include "synth_tsf.h"
 #include "util/scopedirqblocker.h"
 
@@ -18,6 +19,13 @@ void MixerTransport::Init(float sample_rate, SmfPlayer& player)
 {
     sample_rate_ = sample_rate;
     player_      = &player;
+    std::memset(program_override_, -1, sizeof(program_override_));
+    std::memset(applied_program_override_, -1, sizeof(applied_program_override_));
+    for(size_t ch = 0; ch < 16; ch++)
+    {
+        highest_note_[ch] = -1;
+        lowest_note_[ch]  = -1;
+    }
 }
 
 void MixerTransport::Reset(const AppState& state)
@@ -25,6 +33,19 @@ void MixerTransport::Reset(const AppState& state)
     if(player_ != nullptr && player_->IsPlaying())
         player_->Stop();
     ClearQueues();
+    ClearLiveMixerOverrides();
+    std::memset(current_program_, 0, sizeof(current_program_));
+    std::memset(program_override_, -1, sizeof(program_override_));
+    std::memset(applied_program_override_, -1, sizeof(applied_program_override_));
+    std::memset(has_program_override_, 0, sizeof(has_program_override_));
+    std::memset(note_refcount_, 0, sizeof(note_refcount_));
+    std::memset(cc_value_, 0, sizeof(cc_value_));
+    std::memset(active_note_count_, 0, sizeof(active_note_count_));
+    for(size_t ch = 0; ch < 16; ch++)
+    {
+        highest_note_[ch] = -1;
+        lowest_note_[ch]  = -1;
+    }
     SynthPanic();
     SynthResetChannels();
     has_applied_state_ = false;
@@ -85,6 +106,75 @@ void MixerTransport::ClearQueues()
     immediate_.Clear();
 }
 
+void MixerTransport::ClearLiveMixerOverrides()
+{
+    for(size_t i = 0; i < 16; i++)
+    {
+        has_live_volume_[i] = false;
+        has_live_pan_[i]    = false;
+        has_live_reverb_[i] = false;
+        has_live_chorus_[i] = false;
+        live_volume_[i]     = 0;
+        live_pan_[i]        = 0;
+        live_reverb_[i]     = 0;
+        live_chorus_[i]     = 0;
+    }
+}
+
+bool MixerTransport::ChannelGateActive(uint8_t ch) const
+{
+    return ch < 16 && active_note_count_[ch] > 0;
+}
+
+bool MixerTransport::AnyChannelGateActive() const
+{
+    for(size_t ch = 0; ch < 16; ch++)
+    {
+        if(active_note_count_[ch] > 0)
+            return true;
+    }
+    return false;
+}
+
+int MixerTransport::ChannelPitchNote(uint8_t ch, NotePriority priority) const
+{
+    if(ch >= 16)
+        return -1;
+    return priority == NotePriority::Highest ? highest_note_[ch] : lowest_note_[ch];
+}
+
+uint8_t MixerTransport::ChannelCcValue(uint8_t ch, uint8_t cc) const
+{
+    return (ch < 16) ? cc_value_[ch][cc] : 0;
+}
+
+uint8_t MixerTransport::ChannelProgram(uint8_t ch) const
+{
+    return ch < 16 ? current_program_[ch] : 0;
+}
+
+int MixerTransport::TimeSigNumerator() const
+{
+    return player_ ? player_->TimeSigNumerator() : 4;
+}
+
+int MixerTransport::TimeSigDenominator() const
+{
+    return player_ ? player_->TimeSigDenominator() : 4;
+}
+
+uint64_t MixerTransport::CurrentCycleSample() const
+{
+    return sample_clock_ >= play_start_sample_ ? (sample_clock_ - play_start_sample_) : 0;
+}
+
+uint64_t MixerTransport::CurrentSongTick() const
+{
+    if(player_ == nullptr)
+        return 0;
+    return play_start_ticks_ + player_->TicksFromSamples(CurrentCycleSample());
+}
+
 uint8_t MixerTransport::ScaleController(uint8_t value, uint8_t max_value) const
 {
     return static_cast<uint8_t>((uint16_t(value) * uint16_t(max_value)) / 127u);
@@ -103,14 +193,113 @@ uint8_t MixerTransport::ApplyTranspose(uint8_t ch, uint8_t note) const
     return static_cast<uint8_t>(transposed);
 }
 
+uint8_t MixerTransport::EffectiveVolume(uint8_t ch, const AppState& state) const
+{
+    const uint8_t base = has_live_volume_[ch] ? live_volume_[ch] : state.channels[ch].volume;
+    if(state.channels[ch].muted)
+        return 0;
+    return ScaleController(base, state.sf2_master_volume_max);
+}
+
+uint8_t MixerTransport::EffectivePan(uint8_t ch, const AppState& state) const
+{
+    return has_live_pan_[ch] ? live_pan_[ch] : state.channels[ch].pan;
+}
+
+uint8_t MixerTransport::EffectiveReverb(uint8_t ch, const AppState& state) const
+{
+    const uint8_t base = has_live_reverb_[ch] ? live_reverb_[ch] : state.channels[ch].reverb_send;
+    return ScaleController(base, state.sf2_reverb_max);
+}
+
+uint8_t MixerTransport::EffectiveChorus(uint8_t ch, const AppState& state) const
+{
+    const uint8_t base = has_live_chorus_[ch] ? live_chorus_[ch] : state.channels[ch].chorus_send;
+    return ScaleController(base, state.sf2_chorus_max);
+}
+
+void MixerTransport::RecomputeNoteExtrema(uint8_t ch)
+{
+    highest_note_[ch] = -1;
+    lowest_note_[ch]  = -1;
+    for(int note = 0; note < 128; note++)
+    {
+        if(note_refcount_[ch][note] == 0)
+            continue;
+        if(lowest_note_[ch] < 0)
+            lowest_note_[ch] = static_cast<int8_t>(note);
+        highest_note_[ch] = static_cast<int8_t>(note);
+    }
+}
+
+void MixerTransport::UpdateNoteState(const MidiEv& ev)
+{
+    if(ev.ch >= 16)
+        return;
+
+    switch(ev.type)
+    {
+        case EvType::NoteOn:
+            if(ev.b == 0)
+                break;
+            if(note_refcount_[ev.ch][ev.a] == 0)
+            {
+                active_note_count_[ev.ch]++;
+                if(lowest_note_[ev.ch] < 0 || ev.a < lowest_note_[ev.ch])
+                    lowest_note_[ev.ch] = static_cast<int8_t>(ev.a);
+                if(highest_note_[ev.ch] < 0 || ev.a > highest_note_[ev.ch])
+                    highest_note_[ev.ch] = static_cast<int8_t>(ev.a);
+            }
+            if(note_refcount_[ev.ch][ev.a] < 255)
+                note_refcount_[ev.ch][ev.a]++;
+            break;
+
+        case EvType::NoteOff:
+            if(note_refcount_[ev.ch][ev.a] > 0)
+            {
+                note_refcount_[ev.ch][ev.a]--;
+                if(note_refcount_[ev.ch][ev.a] == 0)
+                {
+                    if(active_note_count_[ev.ch] > 0)
+                        active_note_count_[ev.ch]--;
+                    if(ev.a == static_cast<uint8_t>(highest_note_[ev.ch])
+                       || ev.a == static_cast<uint8_t>(lowest_note_[ev.ch]))
+                        RecomputeNoteExtrema(ev.ch);
+                }
+            }
+            break;
+
+        case EvType::ControlChange:
+            cc_value_[ev.ch][ev.a] = ev.b;
+            break;
+
+        case EvType::AllNotesOff:
+        case EvType::AllSoundOff:
+            std::memset(note_refcount_[ev.ch], 0, sizeof(note_refcount_[ev.ch]));
+            active_note_count_[ev.ch] = 0;
+            highest_note_[ev.ch]      = -1;
+            lowest_note_[ev.ch]       = -1;
+            break;
+
+        case EvType::Program:
+        case EvType::PitchBend: break;
+    }
+}
+
 void MixerTransport::DispatchEvent(const MidiEv& ev, bool scheduled_source)
 {
     MidiEv actual = ev;
 
     if(actual.type == EvType::NoteOn || actual.type == EvType::NoteOff)
         actual.a = ApplyTranspose(actual.ch, actual.a);
+    if(actual.type == EvType::Program && actual.ch < 16 && has_program_override_[actual.ch])
+        actual.a = static_cast<uint8_t>(program_override_[actual.ch]);
     if(actual.type == EvType::ControlChange && actual.a == 11)
         actual.b = ScaleController(actual.b, expression_max_);
+
+    UpdateNoteState(actual);
+    if(actual.type == EvType::Program && actual.ch < 16)
+        current_program_[actual.ch] = actual.a;
 
     if(ev.ch < 16)
     {
@@ -182,6 +371,28 @@ void MixerTransport::TransferScheduledFromParser(const AppState& state)
     }
 }
 
+void MixerTransport::FlushLoopBoundaryNotes()
+{
+    for(uint8_t ch = 0; ch < 16; ch++)
+    {
+        if(active_note_count_[ch] == 0)
+            continue;
+
+        MidiEv ev{};
+        ev.type = EvType::AllSoundOff;
+        ev.ch   = ch;
+        DispatchEvent(ev, false);
+    }
+
+    std::memset(note_refcount_, 0, sizeof(note_refcount_));
+    std::memset(active_note_count_, 0, sizeof(active_note_count_));
+    for(size_t ch = 0; ch < 16; ch++)
+    {
+        highest_note_[ch] = -1;
+        lowest_note_[ch]  = -1;
+    }
+}
+
 bool MixerTransport::MaybeWrapLoopParser(const AppState& state, uint64_t sample_now)
 {
     if(!LoopActive(state))
@@ -202,6 +413,7 @@ bool MixerTransport::MaybeWrapLoopParser(const AppState& state, uint64_t sample_
     if(loop_start_samples > 0)
         loop_start_samples -= 1;
 
+    FlushLoopBoundaryNotes();
     parsed_.Clear();
     player_->SeekToSample(loop_start_samples, restart_sample);
     play_start_sample_ = restart_sample;
@@ -257,6 +469,15 @@ void MixerTransport::ProcessAudio(AudioHandle::InputBuffer  in,
 void MixerTransport::StartPlayback(const AppState& state)
 {
     ClearQueues();
+    std::memset(current_program_, 0, sizeof(current_program_));
+    std::memset(note_refcount_, 0, sizeof(note_refcount_));
+    std::memset(cc_value_, 0, sizeof(cc_value_));
+    std::memset(active_note_count_, 0, sizeof(active_note_count_));
+    for(size_t ch = 0; ch < 16; ch++)
+    {
+        highest_note_[ch] = -1;
+        lowest_note_[ch]  = -1;
+    }
     SynthPanic();
     SynthResetChannels();
 
@@ -270,6 +491,18 @@ void MixerTransport::StartPlayback(const AppState& state)
         player_->SeekToSample(loop_start_samples, sample_now);
         play_start_sample_ = sample_now;
         play_start_ticks_  = loop_start_ticks;
+
+        for(uint8_t ch = 0; ch < 16; ch++)
+        {
+            if(player_->HasSeekProgramState(ch))
+            {
+                MidiEv ev{};
+                ev.type = EvType::Program;
+                ev.ch   = ch;
+                ev.a    = player_->GetSeekProgramState(ch);
+                EnqueueImmediate(ev);
+            }
+        }
     }
     else
     {
@@ -285,6 +518,15 @@ void MixerTransport::StopPlayback(const AppState& state)
 {
     player_->Stop();
     ClearQueues();
+    ClearLiveMixerOverrides();
+    std::memset(current_program_, 0, sizeof(current_program_));
+    std::memset(note_refcount_, 0, sizeof(note_refcount_));
+    std::memset(active_note_count_, 0, sizeof(active_note_count_));
+    for(size_t ch = 0; ch < 16; ch++)
+    {
+        highest_note_[ch] = -1;
+        lowest_note_[ch]  = -1;
+    }
     SynthPanic();
     SynthResetChannels();
     ApplyMixerState(state, true);
@@ -293,27 +535,23 @@ void MixerTransport::StopPlayback(const AppState& state)
 void MixerTransport::EnqueueChannelMixerState(uint8_t ch, const AppState& state)
 {
     MidiEv ev{};
-    const ChannelState& channel       = state.channels[ch];
-    const uint8_t       effective_vol = (state.mute_all || channel.muted)
-                                            ? 0
-                                            : ScaleController(channel.volume, state.sf2_master_volume_max);
 
     ev.type = EvType::ControlChange;
     ev.ch   = ch;
     ev.a    = 7;
-    ev.b    = effective_vol;
+    ev.b    = EffectiveVolume(ch, state);
     EnqueueImmediate(ev);
 
     ev.a = 10;
-    ev.b = channel.pan;
+    ev.b = EffectivePan(ch, state);
     EnqueueImmediate(ev);
 
     ev.a = 91;
-    ev.b = ScaleController(channel.reverb_send, state.sf2_reverb_max);
+    ev.b = EffectiveReverb(ch, state);
     EnqueueImmediate(ev);
 
     ev.a = 93;
-    ev.b = ScaleController(channel.chorus_send, state.sf2_chorus_max);
+    ev.b = EffectiveChorus(ch, state);
     EnqueueImmediate(ev);
 }
 
@@ -322,8 +560,7 @@ void MixerTransport::ApplyMixerState(const AppState& state, bool force)
     for(uint8_t ch = 0; ch < 16; ch++)
     {
         const ChannelState& desired = state.channels[ch];
-        if(force || !has_applied_state_ || applied_mute_all_ != state.mute_all
-           || desired.volume != applied_channels_[ch].volume
+        if(force || !has_applied_state_ || desired.volume != applied_channels_[ch].volume
            || desired.pan != applied_channels_[ch].pan
            || desired.reverb_send != applied_channels_[ch].reverb_send
            || desired.chorus_send != applied_channels_[ch].chorus_send
@@ -332,9 +569,24 @@ void MixerTransport::ApplyMixerState(const AppState& state, bool force)
             EnqueueChannelMixerState(ch, state);
             applied_channels_[ch] = desired;
         }
+
+        const bool has_override = desired.program_override >= 0;
+        has_program_override_[ch] = has_override;
+        program_override_[ch]     = desired.program_override;
+        if(force || applied_program_override_[ch] != desired.program_override)
+        {
+            applied_program_override_[ch] = desired.program_override;
+            if(has_override)
+            {
+                MidiEv ev{};
+                ev.type = EvType::Program;
+                ev.ch   = ch;
+                ev.a    = static_cast<uint8_t>(desired.program_override);
+                EnqueueImmediate(ev);
+            }
+        }
     }
 
-    applied_mute_all_  = state.mute_all;
     has_applied_state_ = true;
 }
 
@@ -512,6 +764,26 @@ void MixerTransport::HandleMidiMessage(MidiEvent msg, const AppState& state)
             else if(cc.control_number == 7 || cc.control_number == 10
                     || cc.control_number == 91 || cc.control_number == 93)
             {
+                switch(cc.control_number)
+                {
+                    case 7:
+                        live_volume_[cc.channel]     = cc.value;
+                        has_live_volume_[cc.channel] = true;
+                        break;
+                    case 10:
+                        live_pan_[cc.channel]     = cc.value;
+                        has_live_pan_[cc.channel] = true;
+                        break;
+                    case 91:
+                        live_reverb_[cc.channel]     = cc.value;
+                        has_live_reverb_[cc.channel] = true;
+                        break;
+                    case 93:
+                        live_chorus_[cc.channel]     = cc.value;
+                        has_live_chorus_[cc.channel] = true;
+                        break;
+                    default: break;
+                }
                 EnqueueChannelMixerState(cc.channel, state);
             }
             else

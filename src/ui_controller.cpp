@@ -8,6 +8,8 @@ namespace major_midi
 
 namespace
 {
+constexpr uint32_t kBankRepeatWindowMs = 450;
+
 float MidiToNorm(uint8_t value)
 {
     return static_cast<float>(value) / 127.0f;
@@ -24,7 +26,7 @@ int ClampInt(int value, int min_value, int max_value)
 
 size_t MainMenuItemCount()
 {
-    return 5;
+    return 7;
 }
 
 size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
@@ -34,17 +36,31 @@ size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
         case MenuPage::Main: return MainMenuItemCount();
         case MenuPage::Fx: return 6;
         case MenuPage::Song: return 6;
-        case MenuPage::Sf2: return 8;
+        case MenuPage::Sf2: return 10;
+        case MenuPage::CvGate: return CvGateVisibleItemCount(state.cv_gate);
         case MenuPage::LoadMidi: return 1 + library.MidiCount();
         case MenuPage::LoadSf2: return 1 + library.SoundFontCount();
+        case MenuPage::SaveAllConfirm: return 2;
     }
     return 0;
+}
+
+bool AreAllChannelsMuted(const AppState& state)
+{
+    for(const auto& channel : state.channels)
+    {
+        if(!channel.muted)
+            return false;
+    }
+    return true;
 }
 } // namespace
 
 void UiController::Init(AppState& state)
 {
     state_ = &state;
+    last_bank_button_    = 0xFF;
+    last_bank_button_ms_ = 0;
     ResetKnobPickup();
 }
 
@@ -87,6 +103,19 @@ void UiController::ExitMenuPage(uint32_t now_ms)
     SetOverlay(*state_, "Menu", now_ms, 500);
 }
 
+void UiController::HandlePerformanceBankButton(uint8_t bank, uint32_t now_ms)
+{
+    const bool quick_repeat = bank == last_bank_button_
+                              && (now_ms - last_bank_button_ms_) <= kBankRepeatWindowMs;
+
+    SelectBank(bank, now_ms);
+    if(quick_repeat)
+        CycleKnobPage(now_ms);
+
+    last_bank_button_    = bank;
+    last_bank_button_ms_ = now_ms;
+}
+
 bool UiController::HandleEvent(const UiEvent& event,
                                uint32_t       now_ms,
                                const MediaLibrary& library)
@@ -104,7 +133,7 @@ bool UiController::HandleEvent(const UiEvent& event,
             }
             if(state_->ui_mode == UiMode::Menu || state_->ui_mode == UiMode::MenuPage)
                 return true;
-            SelectBank(event.index, now_ms);
+            HandlePerformanceBankButton(event.index, now_ms);
             return true;
 
         case UiEventType::PlayButtonPressed:
@@ -149,10 +178,12 @@ bool UiController::HandleEvent(const UiEvent& event,
                                                             : "Mute Mode");
                     return true;
                 case 2:
-                    state_->mute_all = !state_->mute_all;
-                    SetOverlay(*state_,
-                               state_->mute_all ? "Mute All On" : "Mute All Off",
-                               now_ms);
+                {
+                    const bool mute_all = !AreAllChannelsMuted(*state_);
+                    for(auto& channel : state_->channels)
+                        channel.muted = mute_all;
+                    SetOverlay(*state_, mute_all ? "Mute All On" : "Mute All Off", now_ms);
+                }
                     return true;
                 case 3:
                     SetMode(UiMode::LoopEdit, now_ms, "Loop Edit");
@@ -235,7 +266,7 @@ void UiController::SetMode(UiMode mode, uint32_t now_ms, const char* overlay)
 
 void UiController::CycleKnobPage(uint32_t now_ms)
 {
-    const auto next = (static_cast<uint8_t>(state_->knob_page) + 1) % 4;
+    const auto next = (static_cast<uint8_t>(state_->knob_page) + 1) % 5;
     state_->knob_page = static_cast<KnobPage>(next);
     ResetKnobPickup();
     SetOverlay(*state_, KnobPageName(state_->knob_page), now_ms);
@@ -327,6 +358,8 @@ void UiController::ActivateMenuRoot(const MediaLibrary&, uint32_t now_ms)
         case 2: EnterMenuPage(MenuPage::Fx, now_ms); break;
         case 3: EnterMenuPage(MenuPage::Song, now_ms); break;
         case 4: EnterMenuPage(MenuPage::Sf2, now_ms); break;
+        case 5: EnterMenuPage(MenuPage::CvGate, now_ms); break;
+        case 6: EnterMenuPage(MenuPage::SaveAllConfirm, now_ms); break;
         default: break;
     }
 }
@@ -371,6 +404,11 @@ void UiController::ActivateMenuPage(const MediaLibrary& library, uint32_t now_ms
             SetOverlay(*state_, "Edit SF2", now_ms, 300);
             break;
 
+        case MenuPage::CvGate:
+            state_->menu_editing = true;
+            SetOverlay(*state_, "Edit CV/Gate", now_ms, 300);
+            break;
+
         case MenuPage::LoadMidi:
         {
             const size_t idx = state_->menu_page_cursor - 1;
@@ -394,6 +432,18 @@ void UiController::ActivateMenuPage(const MediaLibrary& library, uint32_t now_ms
             }
         }
         break;
+
+        case MenuPage::SaveAllConfirm:
+            if(state_->menu_page_cursor == 0)
+            {
+                state_->pending_save_all = true;
+                SetOverlay(*state_, "Saving...", now_ms, 500);
+            }
+            else
+            {
+                ExitMenuPage(now_ms);
+            }
+            break;
 
         case MenuPage::Main: break;
     }
@@ -505,17 +555,24 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
             switch(state_->menu_page_cursor)
             {
                 case 1:
+                    state_->sf2_max_voices
+                        = static_cast<uint8_t>(ClampInt(static_cast<int>(state_->sf2_max_voices)
+                                                           + (delta > 0 ? 1 : -1),
+                                                       4,
+                                                       32));
+                    break;
+                case 2:
                     state_->sf2_channel
                         = static_cast<uint8_t>(ClampInt(static_cast<int>(state_->sf2_channel)
                                                             + (delta > 0 ? 1 : -1),
                                                         0,
                                                         15));
                     break;
-                case 2:
+                case 3:
                     state_->channels[state_->sf2_channel].muted
                         = !state_->channels[state_->sf2_channel].muted;
                     break;
-                case 3:
+                case 4:
                     state_->channels[state_->sf2_channel].volume
                         = static_cast<uint8_t>(
                             ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].volume)
@@ -523,7 +580,7 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      0,
                                      127));
                     break;
-                case 4:
+                case 5:
                     state_->channels[state_->sf2_channel].pan
                         = static_cast<uint8_t>(
                             ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].pan)
@@ -531,7 +588,7 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      0,
                                      127));
                     break;
-                case 5:
+                case 6:
                     state_->channels[state_->sf2_channel].reverb_send
                         = static_cast<uint8_t>(
                             ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].reverb_send)
@@ -539,7 +596,7 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      0,
                                      127));
                     break;
-                case 6:
+                case 7:
                     state_->channels[state_->sf2_channel].chorus_send
                         = static_cast<uint8_t>(
                             ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].chorus_send)
@@ -547,7 +604,15 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      0,
                                      127));
                     break;
-                case 7:
+                case 8:
+                    state_->channels[state_->sf2_channel].program_override
+                        = static_cast<int8_t>(
+                            ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].program_override)
+                                         + (delta > 0 ? 1 : -1),
+                                     -1,
+                                     127));
+                    break;
+                case 9:
                     state_->sf2_transpose
                         = static_cast<int8_t>(ClampInt(static_cast<int>(state_->sf2_transpose)
                                                            + (delta > 0 ? 1 : -1),
@@ -558,9 +623,142 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
             }
             break;
 
+        case MenuPage::CvGate:
+        {
+            auto& cv_gate = state_->cv_gate;
+            switch(CvGateVisibleItemAt(cv_gate, state_->menu_page_cursor))
+            {
+                case CvGateMenuItem::Cv1Mode:
+                    cv_gate.cv_in[0].mode = static_cast<CvInMode>(
+                        ClampInt(static_cast<int>(cv_gate.cv_in[0].mode) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(CvInMode::ChannelCc)));
+                    break;
+                case CvGateMenuItem::Cv1Channel:
+                    cv_gate.cv_in[0].channel = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.cv_in[0].channel) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 15));
+                    break;
+                case CvGateMenuItem::Cv1Cc:
+                    cv_gate.cv_in[0].cc = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.cv_in[0].cc) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 127));
+                    break;
+                case CvGateMenuItem::Cv2Mode:
+                    cv_gate.cv_in[1].mode = static_cast<CvInMode>(
+                        ClampInt(static_cast<int>(cv_gate.cv_in[1].mode) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(CvInMode::ChannelCc)));
+                    break;
+                case CvGateMenuItem::Cv2Channel:
+                    cv_gate.cv_in[1].channel = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.cv_in[1].channel) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 15));
+                    break;
+                case CvGateMenuItem::Cv2Cc:
+                    cv_gate.cv_in[1].cc = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.cv_in[1].cc) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 127));
+                    break;
+                case CvGateMenuItem::Gate1Mode:
+                    cv_gate.gate_out[0].mode = static_cast<GateOutMode>(
+                        ClampInt(static_cast<int>(cv_gate.gate_out[0].mode) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(GateOutMode::ChannelGate)));
+                    break;
+                case CvGateMenuItem::Gate1Channel:
+                    cv_gate.gate_out[0].channel = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.gate_out[0].channel) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 15));
+                    break;
+                case CvGateMenuItem::Gate1Resolution:
+                    cv_gate.gate_out[0].sync_resolution = static_cast<SyncResolution>(
+                        ClampInt(static_cast<int>(cv_gate.gate_out[0].sync_resolution)
+                                     + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(SyncResolution::Div64)));
+                    break;
+                case CvGateMenuItem::Gate2Mode:
+                    cv_gate.gate_out[1].mode = static_cast<GateOutMode>(
+                        ClampInt(static_cast<int>(cv_gate.gate_out[1].mode) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(GateOutMode::ChannelGate)));
+                    break;
+                case CvGateMenuItem::Gate2Channel:
+                    cv_gate.gate_out[1].channel = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.gate_out[1].channel) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 15));
+                    break;
+                case CvGateMenuItem::Gate2Resolution:
+                    cv_gate.gate_out[1].sync_resolution = static_cast<SyncResolution>(
+                        ClampInt(static_cast<int>(cv_gate.gate_out[1].sync_resolution)
+                                     + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(SyncResolution::Div64)));
+                    break;
+                case CvGateMenuItem::CvOut1Mode:
+                    cv_gate.cv_out[0].mode = static_cast<CvOutMode>(
+                        ClampInt(static_cast<int>(cv_gate.cv_out[0].mode) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(CvOutMode::ChannelCc)));
+                    break;
+                case CvGateMenuItem::CvOut1Channel:
+                    cv_gate.cv_out[0].channel = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.cv_out[0].channel) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 15));
+                    break;
+                case CvGateMenuItem::CvOut1Cc:
+                    cv_gate.cv_out[0].cc = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.cv_out[0].cc) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 127));
+                    break;
+                case CvGateMenuItem::CvOut1Priority:
+                    cv_gate.cv_out[0].priority = cv_gate.cv_out[0].priority == NotePriority::Highest
+                                                     ? NotePriority::Lowest
+                                                     : NotePriority::Highest;
+                    break;
+                case CvGateMenuItem::CvOut2Mode:
+                    cv_gate.cv_out[1].mode = static_cast<CvOutMode>(
+                        ClampInt(static_cast<int>(cv_gate.cv_out[1].mode) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(CvOutMode::ChannelCc)));
+                    break;
+                case CvGateMenuItem::CvOut2Channel:
+                    cv_gate.cv_out[1].channel = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.cv_out[1].channel) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 15));
+                    break;
+                case CvGateMenuItem::CvOut2Cc:
+                    cv_gate.cv_out[1].cc = static_cast<uint8_t>(
+                        ClampInt(static_cast<int>(cv_gate.cv_out[1].cc) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 127));
+                    break;
+                case CvGateMenuItem::CvOut2Priority:
+                    cv_gate.cv_out[1].priority = cv_gate.cv_out[1].priority == NotePriority::Highest
+                                                     ? NotePriority::Lowest
+                                                     : NotePriority::Highest;
+                    break;
+                case CvGateMenuItem::Back:
+                default: return;
+            }
+            state_->cv_gate_dirty = true;
+        }
+        break;
+
         case MenuPage::Main:
         case MenuPage::LoadMidi:
-        case MenuPage::LoadSf2: return;
+        case MenuPage::LoadSf2:
+        case MenuPage::SaveAllConfirm: return;
     }
 
     state_->settings_dirty = true;
@@ -626,6 +824,14 @@ bool UiController::HandleKnob(uint8_t index, float value, uint32_t now_ms)
         case KnobPage::ChorusSend:
             target = MidiToNorm(state_->channels[ch].chorus_send);
             break;
+        case KnobPage::Program:
+        {
+            const int program = state_->channels[ch].program_override >= 0
+                                    ? state_->channels[ch].program_override
+                                    : state_->channels[ch].current_program;
+            target = MidiToNorm(static_cast<uint8_t>(program));
+        }
+            break;
     }
 
     if(!knob_caught_[index])
@@ -646,8 +852,12 @@ bool UiController::HandleKnob(uint8_t index, float value, uint32_t now_ms)
         case KnobPage::ChorusSend:
             state_->channels[ch].chorus_send = midi_value;
             break;
+        case KnobPage::Program:
+            state_->channels[ch].program_override = static_cast<int8_t>(midi_value);
+            break;
     }
 
+    state_->settings_dirty = true;
     return true;
 }
 

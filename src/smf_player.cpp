@@ -196,6 +196,7 @@ void SmfPlayer::Start(uint64_t sampleNow)
         playing_     = true;
         startSample_ = sampleNow;
         seekSample_  = 0;
+        std::memset(seek_program_valid_, 0, sizeof(seek_program_valid_));
         for(uint16_t i = 0; i < trackCount_; i++)
         {
             tracks_[i].pos          = tracks_[i].start;
@@ -214,6 +215,16 @@ void SmfPlayer::Start(uint64_t sampleNow)
     }
 }
 
+bool SmfPlayer::HasSeekProgramState(uint8_t ch) const
+{
+    return ch < 16 && seek_program_valid_[ch];
+}
+
+uint8_t SmfPlayer::GetSeekProgramState(uint8_t ch) const
+{
+    return ch < 16 ? seek_program_[ch] : 0;
+}
+
 void SmfPlayer::Stop()
 {
     playing_ = false;
@@ -227,6 +238,7 @@ void SmfPlayer::SeekToSample(uint64_t targetSample, uint64_t nowSample)
     playing_     = true;
     startSample_ = nowSample;
     seekSample_  = targetSample;
+    std::memset(seek_program_valid_, 0, sizeof(seek_program_valid_));
 
     for(uint16_t i = 0; i < trackCount_; i++)
     {
@@ -250,6 +262,11 @@ void SmfPlayer::SeekToSample(uint64_t targetSample, uint64_t nowSample)
             {
                 tracks_[i].hasEvent = false;
                 break;
+            }
+            if(ev.type == EvType::Program && ev.ch < 16)
+            {
+                seek_program_valid_[ev.ch] = true;
+                seek_program_[ev.ch]       = ev.a;
             }
             if(tracks_[i].sampleOffset >= targetSample)
             {

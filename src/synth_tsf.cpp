@@ -132,6 +132,8 @@ static FIL  g_sf2file;
 static float g_sample_rate = 48000.0f;
 static Chorus   DSY_SDRAM_BSS g_chorus;
 static ReverbSc DSY_SDRAM_BSS g_reverb;
+static Limiter  DSY_SDRAM_BSS g_limiter_l;
+static Limiter  DSY_SDRAM_BSS g_limiter_r;
 static bool    g_fx_init = false;
 static float   g_chorus_wet = 1.0f;
 static float   g_chorus_dry = 0.0f;
@@ -148,6 +150,14 @@ static float   g_reverb_lpf_hz = 8000.0f;
 static float   g_reverb_hpf_hz = 80.0f;
 static float   g_chorus_depth = 0.35f;
 static float   g_chorus_speed_hz = 0.25f;
+static float   g_external_gain = 1.0f;
+static bool    g_fx_load_shed = false;
+
+namespace
+{
+constexpr int kFxLoadShedOnVoices  = 20;
+constexpr int kFxLoadShedOffVoices = 14;
+}
 
 bool SynthInit()
 {
@@ -192,6 +202,8 @@ bool SynthLoadSf2(const char* path, float sampleRate, int voices)
         g_reverb.SetFeedback(0.85f);
         g_reverb.SetLpFreq(8000.0f);
         SynthSetReverbHpFreq(80.0f);
+        g_limiter_l.Init();
+        g_limiter_r.Init();
 
         g_fx_init = true;
     }
@@ -209,6 +221,32 @@ void SynthUnloadSf2()
         g_tsf = nullptr;
     }
     f_close(&g_sf2file);
+}
+
+int SynthActiveVoiceCount()
+{
+    return g_tsf ? tsf_active_voice_count(g_tsf) : 0;
+}
+
+void SynthSetMaxVoices(int maxVoices)
+{
+    if(!g_tsf)
+        return;
+    if(maxVoices < 4)
+        maxVoices = 4;
+    if(maxVoices > 32)
+        maxVoices = 32;
+    tsf_reset(g_tsf);
+    tsf_set_max_voices(g_tsf, maxVoices);
+}
+
+void SynthSetExternalGain(float gain)
+{
+    if(gain < 0.0f)
+        gain = 0.0f;
+    if(gain > 1.0f)
+        gain = 1.0f;
+    g_external_gain = gain;
 }
 
 size_t SynthArenaUsed()
@@ -312,6 +350,30 @@ void SynthRender(float* outL, float* outR, size_t frames)
     if(frames > 256)
         frames = 256;
 
+    const int active_voices = tsf_active_voice_count(g_tsf);
+    if(g_fx_load_shed)
+    {
+        if(active_voices <= kFxLoadShedOffVoices)
+            g_fx_load_shed = false;
+    }
+    else if(active_voices >= kFxLoadShedOnVoices)
+    {
+        g_fx_load_shed = true;
+    }
+
+    if(g_fx_load_shed)
+    {
+        tsf_render_float(g_tsf, tmp, (int)frames, 0);
+        for(size_t i = 0; i < frames; i++)
+        {
+            outL[i] = tmp[2 * i + 0] * g_external_gain;
+            outR[i] = tmp[2 * i + 1] * g_external_gain;
+        }
+        g_limiter_l.ProcessBlock(outL, frames, 1.0f);
+        g_limiter_r.ProcessBlock(outR, frames, 1.0f);
+        return;
+    }
+
     tsf_render_float_fx(g_tsf, tmp, tmpChorus, tmpReverb, (int)frames, 0);
     for(size_t i = 0; i < frames; i++)
     {
@@ -337,9 +399,16 @@ void SynthRender(float* outL, float* outR, size_t frames)
         g_reverb_hp_xr = rvR;
 
         // Send amounts already scale per-voice contributions.
-        outL[i] = dryL + chInL * g_chorus_dry + chL + tmpReverb[2 * i + 0] * g_reverb_dry + yL * g_reverb_wet;
-        outR[i] = dryR + chInR * g_chorus_dry + chR + tmpReverb[2 * i + 1] * g_reverb_dry + yR * g_reverb_wet;
+        outL[i] = (dryL + chInL * g_chorus_dry + chL + tmpReverb[2 * i + 0] * g_reverb_dry
+                   + yL * g_reverb_wet)
+                  * g_external_gain;
+        outR[i] = (dryR + chInR * g_chorus_dry + chR + tmpReverb[2 * i + 1] * g_reverb_dry
+                   + yR * g_reverb_wet)
+                  * g_external_gain;
     }
+
+    g_limiter_l.ProcessBlock(outL, frames, 1.0f);
+    g_limiter_r.ProcessBlock(outR, frames, 1.0f);
 }
 
 void SynthSetReverbTime(float t01)

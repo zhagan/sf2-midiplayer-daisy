@@ -77,4 +77,5 @@ class ClockSync
 
     float EdgeDtToSamplesPer16th(uint64_t dt) const;
     void  HandleEdge(uint64_t sampleTime);
+    void  ResetExternalLockState();
 };

@@ -35,6 +35,8 @@ class SmfPlayer
     uint8_t TimeSigNumerator() const { return ts_num_; }
     uint8_t TimeSigDenominator() const { return ts_den_; }
     const char* GetTrackNameForChannel(uint8_t ch) const;
+    bool    HasSeekProgramState(uint8_t ch) const;
+    uint8_t GetSeekProgramState(uint8_t ch) const;
     const major_midi::MajorMidiSettings& Settings() const { return settings_; }
     major_midi::MajorMidiSettings& MutableSettings() { return settings_; }
     bool SaveSettings();
@@ -95,6 +97,8 @@ class SmfPlayer
     double   samplesPerTick_  = 0.0;
     uint8_t  ts_num_          = 4;
     uint8_t  ts_den_          = 4;
+    bool     seek_program_valid_[16]{};
+    uint8_t  seek_program_[16]{};
     static constexpr uint16_t kMaxTempoPoints = 256;
     uint16_t tempoCount_      = 0;
     uint32_t tempoTicks_[kMaxTempoPoints]{};
