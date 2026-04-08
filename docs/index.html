@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Major MIDI Documentation</title>
+    <meta
+      name="description"
+      content="Major MIDI documentation: setup, controls, menu reference, sync, CV/gate routing, saving, and troubleshooting."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <p class="kicker">Major MIDI</p>
+          <h1>Operator Guide</h1>
+          <p>
+            A practical front-panel guide for using Major MIDI on Daisy Patch SM.
+          </p>
+        </div>
+
+        <nav class="nav">
+          <a href="#overview">Overview</a>
+          <a href="#quick-start">Quick Start</a>
+          <a href="#media">SD Card Layout</a>
+          <a href="#boot">Boot Behavior</a>
+          <a href="#performance">Performance Screen</a>
+          <a href="#workflow">Performance Workflow</a>
+          <a href="#shift">Shift + Mute + Loop</a>
+          <a href="#menu">Main Menu</a>
+          <a href="#song">Song Settings</a>
+          <a href="#sf2">SF2 Settings</a>
+          <a href="#cv-gate">CV/Gate</a>
+          <a href="#save">Save All</a>
+          <a href="#sync">Sync</a>
+          <a href="#midi">MIDI Input</a>
+          <a href="#programs">Program Handling</a>
+          <a href="#looping">Looping</a>
+          <a href="#workflows">Typical Workflows</a>
+          <a href="#troubleshooting">Troubleshooting</a>
+          <a href="#hardware">Hardware Mapping</a>
+          <a href="#build">Build</a>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <section class="hero" id="overview">
+          <div class="hero-grid">
+            <div>
+              <p class="kicker">Documentation</p>
+              <h2>Major MIDI</h2>
+              <p>
+                Major MIDI is a Daisy Patch SM firmware for playing Standard MIDI
+                Files from SD card through a SoundFont 2 synth engine, with a
+                compact front-panel UI, live MIDI input, loop playback, internal
+                or external sync, and assignable CV/gate I/O.
+              </p>
+              <p>
+                This page is meant to be a direct user guide: what to put on the
+                SD card, what the controls do, how the menus work, how sync works,
+                and how to save your setup safely.
+              </p>
+            </div>
+
+            <div class="hero-card">
+              <h3>At a Glance</h3>
+              <ul>
+                <li>Plays <code>.mid</code> files from SD</li>
+                <li>Loads <code>.sf2</code> SoundFonts from SD</li>
+                <li>16-channel mixer with fast front-panel control</li>
+                <li>Per-channel program overrides</li>
+                <li>Loop playback with saved song metadata</li>
+                <li>UART MIDI in and external USB MIDI in</li>
+                <li>Internal or external sync</li>
+                <li>Phase 1 CV/gate routing</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="quick-start">
+          <h2>Quick Start</h2>
+          <ol class="steps">
+            <li>Put at least one <code>.mid</code> file into <code>0:/midi</code>.</li>
+            <li>Put at least one <code>.sf2</code> file into <code>0:/soundfonts</code>.</li>
+            <li>Insert the SD card and boot the module.</li>
+            <li>Open the main menu with a long encoder press.</li>
+            <li>Load a MIDI file.</li>
+            <li>Load an SF2.</li>
+            <li>Return to the performance screen.</li>
+            <li>Press <code>Play</code>.</li>
+          </ol>
+
+          <div class="callout">
+            <strong>External sync note:</strong> if sync is set to external and no
+            valid external clock is present, playback will not run. Either switch
+            back to internal sync or provide MIDI clock / gate clock.
+          </div>
+        </section>
+
+        <section class="section" id="media">
+          <h2>SD Card Layout</h2>
+          <p>Major MIDI expects these folders on the SD card:</p>
+          <pre><code>0:/midi
+0:/soundfonts</code></pre>
+
+          <p>Example:</p>
+          <pre><code>0:/midi/825.mid
+0:/midi/beat_loop.mid
+0:/soundfonts/microgm.sf2
+0:/soundfonts/another.sf2</code></pre>
+
+          <p>
+            The file browser ignores hidden AppleDouble files such as
+            <code>._581.mid</code> and <code>._microgm.sf2</code>.
+          </p>
+        </section>
+
+        <section class="section" id="boot">
+          <h2>Boot Behavior</h2>
+          <ul class="bullets">
+            <li>The OLED shows a splash screen.</li>
+            <li>The SD card is scanned for MIDI and SF2 files.</li>
+            <li>The current configuration is initialized.</li>
+            <li>
+              Saved CV/gate config is read from
+              <code>0:/major_midi_cv_gate.bin</code> if present.
+            </li>
+          </ul>
+
+          <div class="callout">
+            <strong>Important:</strong> CV/gate config is not background-saved during
+            playback. Runtime SD writes were intentionally disabled because they
+            collided with active SF2 and MIDI streaming. Use <code>Save All</code>.
+          </div>
+        </section>
+
+        <section class="section" id="performance">
+          <h2>Performance Screen</h2>
+          <p>The performance screen is the default operating view.</p>
+
+          <pre><code>STP 120 M001 B1 V</code></pre>
+
+          <p>Meaning:</p>
+          <ul class="bullets">
+            <li><code>STP</code> / <code>PLY</code>: stopped or playing</li>
+            <li><code>120</code>: current BPM</li>
+            <li><code>M001</code>: current measure</li>
+            <li><code>B1</code>: current bank of 4 channels</li>
+            <li><code>V</code>: current quick page</li>
+          </ul>
+
+          <p>The next two lines show:</p>
+          <ul class="bullets">
+            <li>current MIDI file</li>
+            <li>current SF2 file</li>
+          </ul>
+
+          <p>
+            The table below shows the 4 visible channels as columns. Muted channels
+            are displayed with a leading <code>*</code>, for example
+            <code>*01</code>. Zero values are displayed as <code>-</code>.
+          </p>
+        </section>
+
+        <section class="section" id="workflow">
+          <h2>Performance Workflow</h2>
+
+          <div class="grid-2">
+            <div class="mini-card">
+              <h4>Banks</h4>
+              <ul class="bullets">
+                <li><code>B1</code> = channels 1-4</li>
+                <li><code>B2</code> = channels 5-8</li>
+                <li><code>B3</code> = channels 9-12</li>
+                <li><code>B4</code> = channels 13-16</li>
+              </ul>
+              <p>Press a bank button once to select that bank.</p>
+            </div>
+
+            <div class="mini-card">
+              <h4>Quick Pages</h4>
+              <ul class="bullets">
+                <li><code>V</code> volume</li>
+                <li><code>P</code> pan</li>
+                <li><code>R</code> reverb send</li>
+                <li><code>C</code> chorus send</li>
+                <li><code>G</code> program</li>
+              </ul>
+            </div>
+          </div>
+
+          <h3>Moving Between Pages</h3>
+          <p>There are two ways to move between quick pages:</p>
+          <ul class="bullets">
+            <li><code>Encoder + B1</code></li>
+            <li>press the same bank button again quickly</li>
+          </ul>
+
+          <p>Example:</p>
+          <ul class="bullets">
+            <li>press <code>B1</code> once: bank 1, page stays as-is</li>
+            <li>press <code>B1</code> again quickly: page advances</li>
+            <li>press <code>B1</code> again quickly: page advances again</li>
+          </ul>
+
+          <h3>Knobs</h3>
+          <p><code>K1..K4</code> always control the 4 visible channels.</p>
+          <ul class="bullets">
+            <li>On <code>V</code>: volume</li>
+            <li>On <code>P</code>: pan</li>
+            <li>On <code>R</code>: reverb send</li>
+            <li>On <code>C</code>: chorus send</li>
+            <li>On <code>G</code>: program override</li>
+          </ul>
+
+          <p>
+            Knobs use pickup / hysteresis behavior, so after a bank or page change
+            they generally need to pass through the current stored value before they
+            begin changing it.
+          </p>
+
+          <h3>Play and BPM</h3>
+          <ul class="bullets">
+            <li><code>Play</code> toggles transport play/stop</li>
+            <li><code>Encoder turn</code> changes BPM in performance mode</li>
+            <li>BPM range is <code>20</code> to <code>300</code></li>
+          </ul>
+        </section>
+
+        <section class="section" id="shift">
+          <h2>Shift, Mute, and Loop</h2>
+
+          <h3>Shift Actions</h3>
+          <ul class="bullets">
+            <li><code>Encoder + B1</code>: cycle quick page</li>
+            <li><code>Encoder + B2</code>: enter/exit mute mode</li>
+            <li><code>Encoder + B3</code>: mute all or unmute all channels</li>
+            <li><code>Encoder + B4</code>: enter loop edit</li>
+          </ul>
+
+          <h3>Mute All</h3>
+          <p>
+            Mute all is not a separate global audio mode. It directly toggles the
+            per-channel mute state on all 16 channels.
+          </p>
+
+          <h3>Mute Mode</h3>
+          <ul class="bullets">
+            <li><code>B1..B4</code>: mute/unmute visible channels</li>
+            <li><code>Encoder + B1..B4</code>: switch bank while staying in mute mode</li>
+            <li><code>Encoder press</code>: return to performance</li>
+          </ul>
+
+          <p>Mute mode does not overwrite the stored volume values.</p>
+
+          <h3>Loop Edit</h3>
+          <ul class="bullets">
+            <li><code>K1</code>: loop start</li>
+            <li><code>K2</code>: loop end</li>
+            <li><code>Encoder press</code>: exit loop edit</li>
+          </ul>
+        </section>
+
+        <section class="section" id="menu">
+          <h2>Main Menu</h2>
+          <p>Open the main menu with a long encoder press.</p>
+
+          <div class="grid-2">
+            <div class="mini-card">
+              <h4>Main Menu Items</h4>
+              <ul class="bullets">
+                <li>Load MIDI</li>
+                <li>Load SF2</li>
+                <li>FX Settings</li>
+                <li>Song Settings</li>
+                <li>SF2 Settings</li>
+                <li>CV/Gate</li>
+                <li>Save All</li>
+              </ul>
+            </div>
+
+            <div class="mini-card">
+              <h4>Menu Controls</h4>
+              <ul class="bullets">
+                <li><code>Encoder turn</code>: move cursor</li>
+                <li><code>Encoder press</code>: select / confirm</li>
+                <li><code>Encoder turn while editing</code>: change value</li>
+                <li><code>Play</code>: back out of current page</li>
+                <li>long encoder press: leave menu entirely</li>
+              </ul>
+            </div>
+          </div>
+
+          <h3>Load MIDI / Load SF2</h3>
+          <p>
+            Choose a file with the encoder and press to load. A loading screen is
+            shown. On success the UI returns to performance. On failure it remains
+            in the menu and shows an error overlay.
+          </p>
+
+          <h3>FX Settings</h3>
+          <ul class="bullets">
+            <li>Rev Time</li>
+            <li>Rev LPF</li>
+            <li>Rev HPF</li>
+            <li>Ch Depth</li>
+            <li>Ch Speed</li>
+          </ul>
+        </section>
+
+        <section class="section" id="song">
+          <h2>Song Settings</h2>
+          <p>
+            Song Settings stores song-level metadata inside the current MIDI file
+            using the custom <code>MMID</code> meta-event block.
+          </p>
+
+          <ul class="bullets">
+            <li><code>BPM Ovr</code>: per-song BPM override</li>
+            <li><code>Loop</code>: enable / disable looping</li>
+            <li><code>Loop St</code>: loop start measure</li>
+            <li><code>Loop End</code>: loop end measure / loop length</li>
+            <li><code>Save To MIDI</code>: write current song settings to the file</li>
+          </ul>
+
+          <h3>What Song Settings Persist</h3>
+          <ul class="bullets">
+            <li>BPM override</li>
+            <li>loop enabled</li>
+            <li>loop start</li>
+            <li>loop beat/sub data</li>
+            <li>loop length</li>
+            <li>other supported Major MIDI metadata fields</li>
+          </ul>
+        </section>
+
+        <section class="section" id="sf2">
+          <h2>SF2 Settings</h2>
+          <p>
+            This is the deeper synth and per-channel settings page.
+          </p>
+
+          <ul class="bullets">
+            <li><code>Voices</code></li>
+            <li><code>Channel</code></li>
+            <li><code>Mute</code></li>
+            <li><code>Volume</code></li>
+            <li><code>Pan</code></li>
+            <li><code>RevSend</code></li>
+            <li><code>ChoSend</code></li>
+            <li><code>Program</code></li>
+            <li><code>Trans</code></li>
+          </ul>
+
+          <h3>Voices</h3>
+          <p>
+            <code>Voices</code> sets the maximum synth voice count, from
+            <code>4</code> to <code>32</code>. This is the main operator control
+            for balancing polyphony and CPU load.
+          </p>
+
+          <h3>Program</h3>
+          <p>Program can operate in two ways:</p>
+          <ul class="bullets">
+            <li><code>Program File</code>: follow the MIDI file’s program changes</li>
+            <li><code>Program 000..127</code>: force a program override</li>
+          </ul>
+
+          <p>
+            Program overrides are also available from the performance
+            <code>G</code> page.
+          </p>
+
+          <h3>Transpose</h3>
+          <p>
+            Global transpose for melodic channels. Drum handling remains separate
+            so channel 10 continues to behave as expected for kits.
+          </p>
+        </section>
+
+        <section class="section" id="cv-gate">
+          <h2>CV/Gate</h2>
+          <p>
+            Phase 1 CV/gate routing is implemented. The page dynamically hides
+            irrelevant options, so channel, CC, and sync resolution only appear
+            when they are meaningful for the currently selected mode.
+          </p>
+
+          <h3>CV Inputs</h3>
+          <ul class="bullets">
+            <li><code>CV In 1</code></li>
+            <li><code>CV In 2</code></li>
+          </ul>
+
+          <p>Modes:</p>
+          <ul class="bullets">
+            <li><code>Off</code></li>
+            <li><code>MasterVol</code></li>
+            <li><code>BPM</code></li>
+            <li><code>Ch CC</code></li>
+          </ul>
+
+          <h3>Gate Outputs</h3>
+          <ul class="bullets">
+            <li><code>Gate Out 1</code></li>
+            <li><code>Gate Out 2</code></li>
+          </ul>
+
+          <p>Modes:</p>
+          <ul class="bullets">
+            <li><code>Off</code></li>
+            <li><code>Sync</code></li>
+            <li><code>Reset</code></li>
+            <li><code>Ch Gate</code></li>
+          </ul>
+
+          <p>Sync output resolutions:</p>
+          <ul class="bullets">
+            <li><code>1/4</code></li>
+            <li><code>1/8</code></li>
+            <li><code>1/16</code></li>
+            <li><code>1/32</code></li>
+            <li><code>1/64</code></li>
+          </ul>
+
+          <h3>CV Outputs</h3>
+          <ul class="bullets">
+            <li><code>CV Out 1</code></li>
+            <li><code>CV Out 2</code></li>
+          </ul>
+
+          <p>Modes:</p>
+          <ul class="bullets">
+            <li><code>Off</code></li>
+            <li><code>Pitch</code></li>
+            <li><code>CC</code></li>
+          </ul>
+
+          <p>Pitch output supports:</p>
+          <ul class="bullets">
+            <li>selected channel</li>
+            <li>highest-note priority</li>
+            <li>lowest-note priority</li>
+          </ul>
+        </section>
+
+        <section class="section" id="save">
+          <h2>Save All</h2>
+          <p>
+            <code>Save All</code> is available from the main menu and includes a
+            confirm/cancel step.
+          </p>
+
+          <p>It saves:</p>
+          <ul class="bullets">
+            <li>current MIDI song settings into the current MIDI file</li>
+            <li>current CV/gate config into <code>0:/major_midi_cv_gate.bin</code></li>
+          </ul>
+
+          <div class="callout">
+            <strong>Safety rule:</strong> playback must be stopped before saving.
+            If playback is active, the UI will show <code>Stop Playback First</code>.
+          </div>
+        </section>
+
+        <section class="section" id="sync">
+          <h2>Sync</h2>
+          <p>
+            Major MIDI supports internal sync and external sync. The sync source
+            switch is read from MCP23017 <code>GPB1</code>.
+          </p>
+
+          <div class="grid-2">
+            <div class="mini-card">
+              <h4>Internal Sync</h4>
+              <p>Switch up.</p>
+              <ul class="bullets">
+                <li>transport uses internal BPM</li>
+                <li>encoder BPM changes apply directly</li>
+              </ul>
+            </div>
+
+            <div class="mini-card">
+              <h4>External Sync</h4>
+              <p>Switch down.</p>
+              <ul class="bullets">
+                <li>MIDI clock is preferred if locked</li>
+                <li>otherwise gate clock on <code>gate_in_1</code></li>
+                <li>no valid external clock means no free-running playback</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="callout">
+            <strong>Note:</strong> external sync behavior is much improved, but it
+            remains one of the more complex parts of the firmware and is still an
+            area worth continued testing.
+          </div>
+        </section>
+
+        <section class="section" id="midi">
+          <h2>MIDI Input</h2>
+          <p>Supported live MIDI inputs:</p>
+          <ul class="bullets">
+            <li>UART MIDI on <code>A2/A3</code></li>
+            <li>external USB MIDI on <code>A8/A9</code></li>
+          </ul>
+
+          <p>
+            Live MIDI is serviced on the fixed control/audio path rather than a
+            naive main-loop poll, which is why timing is now considerably tighter
+            than earlier versions.
+          </p>
+
+          <p>Handled message types include:</p>
+          <ul class="bullets">
+            <li>note on / note off</li>
+            <li>control change</li>
+            <li>program change</li>
+            <li>pitch bend</li>
+            <li>all notes off / all sound off</li>
+            <li>MIDI clock</li>
+            <li>MIDI start / continue / stop</li>
+          </ul>
+        </section>
+
+        <section class="section" id="programs">
+          <h2>Program Handling</h2>
+          <p>
+            Program state is preserved across mid-song starts, loop starts, and
+            loop wraps.
+          </p>
+
+          <p>Current program handling works in layers:</p>
+          <ol class="steps">
+            <li>file program changes from the MIDI file</li>
+            <li>restored file program state on seek / loop start</li>
+            <li>user program override on top</li>
+          </ol>
+
+          <h3>Performance Program Page</h3>
+          <p>
+            The <code>G</code> quick page is the fast live program page.
+          </p>
+          <ul class="bullets">
+            <li>bank selects the 4 channels you are editing</li>
+            <li>knobs set program overrides for those channels</li>
+            <li>the bottom performance row shows program values while on <code>G</code></li>
+          </ul>
+        </section>
+
+        <section class="section" id="looping">
+          <h2>Looping</h2>
+          <p>
+            Major MIDI no longer uses a naive stop-and-restart loop seam. Loop
+            playback is pre-scheduled ahead of the boundary, and loop timing is
+            based on the active BPM.
+          </p>
+
+          <ul class="bullets">
+            <li>loop starts can begin immediately from the chosen position</li>
+            <li>next loop cycle is appended before the seam</li>
+            <li>still-active notes are terminated on wrap to prevent accumulation</li>
+            <li>program state is restored correctly across loop restarts</li>
+          </ul>
+        </section>
+
+        <section class="section" id="workflows">
+          <h2>Typical Workflows</h2>
+
+          <h3>Play a Song</h3>
+          <ol class="steps">
+            <li>Long-press encoder to open the menu.</li>
+            <li>Load a MIDI file.</li>
+            <li>Load an SF2.</li>
+            <li>Return to performance.</li>
+            <li>Press <code>Play</code>.</li>
+          </ol>
+
+          <h3>Mix the Visible Channels</h3>
+          <ol class="steps">
+            <li>Select a bank with <code>B1..B4</code>.</li>
+            <li>Cycle to <code>V</code>, <code>P</code>, <code>R</code>, or <code>C</code>.</li>
+            <li>Use <code>K1..K4</code>.</li>
+          </ol>
+
+          <h3>Change Instruments for a Bank</h3>
+          <ol class="steps">
+            <li>Select the target bank.</li>
+            <li>Cycle to page <code>G</code>.</li>
+            <li>Use <code>K1..K4</code> to set the 4 visible programs.</li>
+          </ol>
+
+          <h3>Configure a Clock Output</h3>
+          <ol class="steps">
+            <li>Open <code>CV/Gate</code>.</li>
+            <li>Set a gate output to <code>Sync</code>.</li>
+            <li>Choose the pulse resolution.</li>
+          </ol>
+
+          <h3>Save Your Setup</h3>
+          <ol class="steps">
+            <li>Stop playback.</li>
+            <li>Open the main menu.</li>
+            <li>Select <code>Save All</code>.</li>
+            <li>Confirm.</li>
+          </ol>
+        </section>
+
+        <section class="section" id="troubleshooting">
+          <h2>Troubleshooting</h2>
+
+          <h3>The song will not start in external sync mode</h3>
+          <ul class="bullets">
+            <li>check whether MIDI clock is present</li>
+            <li>check whether gate clock is present</li>
+            <li>check whether the sync switch is set to external by accident</li>
+          </ul>
+
+          <h3>I hear crunching at high polyphony</h3>
+          <ul class="bullets">
+            <li>reduce <code>Voices</code> in SF2 Settings</li>
+            <li>use a lighter SF2</li>
+            <li>test with a simpler MIDI file</li>
+          </ul>
+
+          <h3>The CV/Gate menu used to freeze the module</h3>
+          <p>
+            That was caused by background SD writes during active streaming.
+            Runtime autosave was removed; use <code>Save All</code> instead.
+          </p>
+
+          <h3>Loop playback used to hang notes</h3>
+          <p>
+            Loop wrap now flushes still-active notes at the seam before continuing
+            the next cycle.
+          </p>
+
+          <h3>External sync is still imperfect for my setup</h3>
+          <p>
+            This remains a good area for continued hardware testing. Verify the
+            external source first with a known-good clock.
+          </p>
+        </section>
+
+        <section class="section" id="hardware">
+          <h2>Hardware Mapping</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Mapping</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>OLED</td><td><code>I2C1</code> on <code>B7/B8</code>, address <code>0x3C</code></td></tr>
+                <tr><td>MCP23017</td><td><code>I2C1</code> on <code>B7/B8</code>, address <code>0x20</code></td></tr>
+                <tr><td>Encoder A/B</td><td><code>D9/D10</code></td></tr>
+                <tr><td>Encoder switch</td><td>MCP <code>GPB2</code></td></tr>
+                <tr><td>Sync source switch</td><td>MCP <code>GPB1</code></td></tr>
+                <tr><td>Knobs</td><td><code>CV_1..CV_4</code></td></tr>
+                <tr><td>CV inputs</td><td><code>CV_5</code>, <code>CV_6</code></td></tr>
+                <tr><td>Gate input sync</td><td><code>gate_in_1</code></td></tr>
+                <tr><td>Gate outputs</td><td><code>gate_out_1</code>, <code>gate_out_2</code></td></tr>
+                <tr><td>UART MIDI</td><td><code>UART_4</code> on <code>A2/A3</code></td></tr>
+                <tr><td>External USB MIDI</td><td><code>A8/A9</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section" id="build">
+          <h2>Build</h2>
+          <p>From the repo root:</p>
+          <pre><code>make -C DaisyExamples/patch_sm/SF2MidiPlayer</code></pre>
+
+          <p>Artifacts:</p>
+          <ul class="bullets">
+            <li><code>build/SF2MidiPlayer.elf</code></li>
+            <li><code>build/SF2MidiPlayer.hex</code></li>
+            <li><code>build/SF2MidiPlayer.bin</code></li>
+          </ul>
+
+          <div class="callout">
+            <strong>Developer note:</strong> this docs page is intentionally static.
+            It is meant to be easy to host from the repo and easy to expand into a
+            larger site later.
+          </div>
+        </section>
+
+        <div class="footer">
+          Major MIDI documentation generated from the current project README and
+          adapted into a static docs site under <code>/docs</code>.
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
