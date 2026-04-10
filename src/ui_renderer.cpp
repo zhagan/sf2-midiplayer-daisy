@@ -56,6 +56,7 @@ size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
         case MenuPage::Fx: return 6;
         case MenuPage::Song: return 6;
         case MenuPage::Sf2: return 10;
+        case MenuPage::Midi: return 13;
         case MenuPage::CvGate: return CvGateVisibleItemCount(state.cv_gate);
         case MenuPage::LoadMidi: return 1 + library.MidiCount();
         case MenuPage::LoadSf2: return 1 + library.SoundFontCount();
@@ -153,6 +154,7 @@ void UiRenderer::Render(const AppState& state,
             "FX Settings",
             "Song Settings",
             "SF2 Settings",
+            "MIDI Settings",
             "CV/Gate",
             "Save All",
         };
@@ -161,7 +163,7 @@ void UiRenderer::Render(const AppState& state,
         {
             const size_t idx = state.menu_root_cursor >= 4 ? state.menu_root_cursor - 3 + row
                                                            : static_cast<size_t>(row);
-            if(idx >= 7)
+            if(idx >= 8)
                 break;
             std::snprintf(line,
                           sizeof(line),
@@ -250,9 +252,6 @@ void UiRenderer::Render(const AppState& state,
                     case CvGateMenuItem::Cv1Mode: std::snprintf(line, sizeof(line), "%cCV1 Mode %s", item == state.menu_page_cursor ? '>' : ' ', CvInModeName(state.cv_gate.cv_in[0].mode)); break;
                     case CvGateMenuItem::Cv1Channel: std::snprintf(line, sizeof(line), "%cCV1 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_in[0].channel) + 1); break;
                     case CvGateMenuItem::Cv1Cc: std::snprintf(line, sizeof(line), "%cCV1 CC %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_in[0].cc)); break;
-                    case CvGateMenuItem::Cv2Mode: std::snprintf(line, sizeof(line), "%cCV2 Mode %s", item == state.menu_page_cursor ? '>' : ' ', CvInModeName(state.cv_gate.cv_in[1].mode)); break;
-                    case CvGateMenuItem::Cv2Channel: std::snprintf(line, sizeof(line), "%cCV2 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_in[1].channel) + 1); break;
-                    case CvGateMenuItem::Cv2Cc: std::snprintf(line, sizeof(line), "%cCV2 CC %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_in[1].cc)); break;
                     case CvGateMenuItem::Gate1Mode: std::snprintf(line, sizeof(line), "%cG1 Mode %s", item == state.menu_page_cursor ? '>' : ' ', GateOutModeName(state.cv_gate.gate_out[0].mode)); break;
                     case CvGateMenuItem::Gate1Channel: std::snprintf(line, sizeof(line), "%cG1 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.gate_out[0].channel) + 1); break;
                     case CvGateMenuItem::Gate1Resolution: std::snprintf(line, sizeof(line), "%cG1 Res %s", item == state.menu_page_cursor ? '>' : ' ', SyncResolutionName(state.cv_gate.gate_out[0].sync_resolution)); break;
@@ -263,10 +262,34 @@ void UiRenderer::Render(const AppState& state,
                     case CvGateMenuItem::CvOut1Channel: std::snprintf(line, sizeof(line), "%cO1 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_out[0].channel) + 1); break;
                     case CvGateMenuItem::CvOut1Cc: std::snprintf(line, sizeof(line), "%cO1 CC %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_out[0].cc)); break;
                     case CvGateMenuItem::CvOut1Priority: std::snprintf(line, sizeof(line), "%cO1 Pri %s", item == state.menu_page_cursor ? '>' : ' ', NotePriorityName(state.cv_gate.cv_out[0].priority)); break;
-                    case CvGateMenuItem::CvOut2Mode: std::snprintf(line, sizeof(line), "%cO2 Mode %s", item == state.menu_page_cursor ? '>' : ' ', CvOutModeName(state.cv_gate.cv_out[1].mode)); break;
-                    case CvGateMenuItem::CvOut2Channel: std::snprintf(line, sizeof(line), "%cO2 Ch %02d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_out[1].channel) + 1); break;
-                    case CvGateMenuItem::CvOut2Cc: std::snprintf(line, sizeof(line), "%cO2 CC %03d", item == state.menu_page_cursor ? '>' : ' ', static_cast<int>(state.cv_gate.cv_out[1].cc)); break;
-                    case CvGateMenuItem::CvOut2Priority: std::snprintf(line, sizeof(line), "%cO2 Pri %s", item == state.menu_page_cursor ? '>' : ' ', NotePriorityName(state.cv_gate.cv_out[1].priority)); break;
+                    case CvGateMenuItem::Cv2Mode:
+                    case CvGateMenuItem::Cv2Channel:
+                    case CvGateMenuItem::Cv2Cc:
+                    case CvGateMenuItem::CvOut2Mode:
+                    case CvGateMenuItem::CvOut2Channel:
+                    case CvGateMenuItem::CvOut2Cc:
+                    case CvGateMenuItem::CvOut2Priority:
+                        line[0] = '\0';
+                        break;
+                }
+            }
+            else if(state.menu_page == MenuPage::Midi)
+            {
+                switch(static_cast<MidiSettingsMenuItem>(item))
+                {
+                    case MidiSettingsMenuItem::Back: std::snprintf(line, sizeof(line), "%cBack to Menu", item == state.menu_page_cursor ? '>' : ' '); break;
+                    case MidiSettingsMenuItem::UsbNotes: std::snprintf(line, sizeof(line), "%cUSB Notes %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.usb.notes ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UsbCcs: std::snprintf(line, sizeof(line), "%cUSB CCs %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.usb.ccs ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UsbPrograms: std::snprintf(line, sizeof(line), "%cUSB Prog %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.usb.programs ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UsbTransport: std::snprintf(line, sizeof(line), "%cUSB Trn %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.usb.transport ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UsbClock: std::snprintf(line, sizeof(line), "%cUSB Clk %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.usb.clock ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UartNotes: std::snprintf(line, sizeof(line), "%cUART Notes %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.uart.notes ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UartCcs: std::snprintf(line, sizeof(line), "%cUART CCs %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.uart.ccs ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UartPrograms: std::snprintf(line, sizeof(line), "%cUART Prog %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.uart.programs ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UartTransport: std::snprintf(line, sizeof(line), "%cUART Trn %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.uart.transport ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UartClock: std::snprintf(line, sizeof(line), "%cUART Clk %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.uart.clock ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UsbInToUart: std::snprintf(line, sizeof(line), "%cUSB>UART %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.usb_in_to_uart ? "On" : "Off"); break;
+                    case MidiSettingsMenuItem::UartInToUsb: std::snprintf(line, sizeof(line), "%cUART>USB %s", item == state.menu_page_cursor ? '>' : ' ', state.midi_routing.uart_in_to_usb ? "On" : "Off"); break;
                 }
             }
             else if(state.menu_page == MenuPage::LoadMidi)
@@ -345,31 +368,6 @@ void UiRenderer::Render(const AppState& state,
             Font_6x8,
             true);
     }
-    else if(state.ui_mode == UiMode::Mute)
-    {
-        std::snprintf(line,
-                      sizeof(line),
-                      "MUTE B%d BPM %d",
-                      static_cast<int>(state.bank) + 1,
-                      state.bpm);
-        display_.SetCursor(0, 0);
-        display_.WriteString(line, Font_6x8, true);
-
-        display_.SetCursor(0, 8);
-        display_.WriteString("B1-4 mute  Shift+B=bank", Font_6x8, true);
-
-        for(int row = 0; row < 4; row++)
-        {
-            const int ch = VisibleChannelIndex(state.bank, row);
-            std::snprintf(line,
-                          sizeof(line),
-                          "Ch%02d %s",
-                          ch + 1,
-                          state.channels[ch].muted ? "MUTED" : "ON");
-            display_.SetCursor(0, 22 + row * 9);
-            display_.WriteString(line, Font_6x8, true);
-        }
-    }
     else
     {
         const int ch0 = VisibleChannelIndex(state.bank, 0);
@@ -446,9 +444,16 @@ void UiRenderer::Render(const AppState& state,
             display_.SetCursor(col_x[i], row_y[4]);
             display_.WriteString(line, Font_6x8, true);
         }
+
+        if(state.ui_mode == UiMode::Mute)
+        {
+            display_.DrawRect(0, 54, 128, 10, true, true);
+            display_.SetCursor(2, 56);
+            display_.WriteString("MUTE MODE ENC=EXIT", Font_6x8, false);
+        }
     }
 
-    if(state.overlay.until_ms > now_ms)
+    if(state.overlay.until_ms > now_ms && state.ui_mode != UiMode::Mute)
     {
         display_.DrawRect(0, 54, 128, 10, true, true);
         display_.SetCursor(2, 56);

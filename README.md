@@ -473,7 +473,6 @@ Available inputs:
 | Input |
 | --- |
 | `CV In 1` |
-| `CV In 2` |
 
 Modes:
 
@@ -547,7 +546,6 @@ Available outputs:
 | Output |
 | --- |
 | `CV Out 1` |
-| `CV Out 2` |
 
 Modes:
 

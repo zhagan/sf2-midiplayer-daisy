@@ -16,8 +16,11 @@ static constexpr size_t kImmediateQueueSize = 256;
 class MixerTransport
 {
   public:
+    using MidiOutputCallback = void (*)(const MidiEv& ev, void* context);
+
     void Init(float sample_rate, SmfPlayer& player);
     void Reset(const AppState& state);
+    void SetMidiOutputCallback(MidiOutputCallback callback, void* context);
     void SetFileBpm(float bpm);
     void ProcessAudio(daisy::AudioHandle::InputBuffer  in,
                       daisy::AudioHandle::OutputBuffer out,
@@ -38,6 +41,8 @@ class MixerTransport
     uint64_t SampleClock() const { return sample_clock_; }
 
   private:
+    bool ChannelEventBlockedByMute(const MidiEv& ev, const AppState& state) const;
+    void FlushChannelNotes(uint8_t ch);
     void EnqueueImmediate(const MidiEv& ev);
     bool DequeueImmediate(MidiEv& ev);
     bool EnqueueScheduled(const MidiEv& ev);
@@ -111,6 +116,8 @@ class MixerTransport
     int8_t             lowest_note_[16]{};
     volatile uint64_t  loop_end_sample_   = UINT64_MAX;
     volatile bool      loop_active_       = false;
+    MidiOutputCallback midi_output_callback_ = nullptr;
+    void*              midi_output_context_  = nullptr;
 };
 
 } // namespace major_midi

@@ -136,6 +136,37 @@ bool MixerTransport::AnyChannelGateActive() const
     return false;
 }
 
+bool MixerTransport::ChannelEventBlockedByMute(const MidiEv& ev, const AppState& state) const
+{
+    if(ev.ch >= 16 || !state.channels[ev.ch].muted)
+        return false;
+
+    switch(ev.type)
+    {
+        case EvType::NoteOn:
+        case EvType::NoteOff:
+        case EvType::Program:
+        case EvType::ControlChange:
+        case EvType::PitchBend: return true;
+        case EvType::AllSoundOff:
+        case EvType::AllNotesOff: return false;
+    }
+    return false;
+}
+
+void MixerTransport::FlushChannelNotes(uint8_t ch)
+{
+    if(ch >= 16)
+        return;
+
+    MidiEv ev{};
+    ev.ch   = ch;
+    ev.type = EvType::AllNotesOff;
+    DispatchEvent(ev, false);
+    ev.type = EvType::AllSoundOff;
+    DispatchEvent(ev, false);
+}
+
 int MixerTransport::ChannelPitchNote(uint8_t ch, NotePriority priority) const
 {
     if(ch >= 16)
@@ -286,6 +317,12 @@ void MixerTransport::UpdateNoteState(const MidiEv& ev)
     }
 }
 
+void MixerTransport::SetMidiOutputCallback(MidiOutputCallback callback, void* context)
+{
+    midi_output_callback_ = callback;
+    midi_output_context_  = context;
+}
+
 void MixerTransport::DispatchEvent(const MidiEv& ev, bool scheduled_source)
 {
     MidiEv actual = ev;
@@ -334,6 +371,9 @@ void MixerTransport::DispatchEvent(const MidiEv& ev, bool scheduled_source)
         case EvType::AllSoundOff: SynthAllSoundOff(actual.ch); break;
         case EvType::AllNotesOff: SynthAllNotesOff(actual.ch); break;
     }
+
+    if(scheduled_source && midi_output_callback_ != nullptr)
+        midi_output_callback_(actual, midi_output_context_);
 }
 
 void MixerTransport::RenderFrames(AudioHandle::OutputBuffer out,
@@ -459,7 +499,11 @@ void MixerTransport::ProcessAudio(AudioHandle::InputBuffer  in,
         {
             if(!PopScheduled(next_ev))
                 break;
-            DispatchEvent(next_ev, true);
+            if(!(next_ev.ch < 16 && applied_channels_[next_ev.ch].muted
+                 && (next_ev.type == EvType::NoteOn || next_ev.type == EvType::NoteOff
+                     || next_ev.type == EvType::Program || next_ev.type == EvType::ControlChange
+                     || next_ev.type == EvType::PitchBend)))
+                DispatchEvent(next_ev, true);
         } while(PeekScheduled(next_ev) && next_ev.atSample <= current_sample);
     }
 
@@ -560,12 +604,16 @@ void MixerTransport::ApplyMixerState(const AppState& state, bool force)
     for(uint8_t ch = 0; ch < 16; ch++)
     {
         const ChannelState& desired = state.channels[ch];
+        const bool mute_changed_to_on = (force || has_applied_state_) && desired.muted
+                                        && !applied_channels_[ch].muted;
         if(force || !has_applied_state_ || desired.volume != applied_channels_[ch].volume
            || desired.pan != applied_channels_[ch].pan
            || desired.reverb_send != applied_channels_[ch].reverb_send
            || desired.chorus_send != applied_channels_[ch].chorus_send
            || desired.muted != applied_channels_[ch].muted)
         {
+            if(mute_changed_to_on)
+                FlushChannelNotes(ch);
             EnqueueChannelMixerState(ch, state);
             applied_channels_[ch] = desired;
         }
@@ -725,7 +773,8 @@ void MixerTransport::HandleMidiMessage(MidiEvent msg, const AppState& state)
             ev.ch   = note.channel;
             ev.a    = note.note;
             ev.b    = note.velocity;
-            EnqueueImmediate(ev);
+            if(!ChannelEventBlockedByMute(ev, state))
+                EnqueueImmediate(ev);
         }
         break;
 
@@ -736,7 +785,8 @@ void MixerTransport::HandleMidiMessage(MidiEvent msg, const AppState& state)
             ev.type = EvType::NoteOff;
             ev.ch   = note.channel;
             ev.a    = note.note;
-            EnqueueImmediate(ev);
+            if(!ChannelEventBlockedByMute(ev, state))
+                EnqueueImmediate(ev);
         }
         break;
 
@@ -747,7 +797,8 @@ void MixerTransport::HandleMidiMessage(MidiEvent msg, const AppState& state)
             ev.type = EvType::Program;
             ev.ch   = pgm.channel;
             ev.a    = pgm.program;
-            EnqueueImmediate(ev);
+            if(!ChannelEventBlockedByMute(ev, state))
+                EnqueueImmediate(ev);
         }
         break;
 
@@ -795,7 +846,8 @@ void MixerTransport::HandleMidiMessage(MidiEvent msg, const AppState& state)
                 ev.b    = cc.control_number == 11
                               ? ScaleController(cc.value, state.sf2_expression_max)
                               : cc.value;
-                EnqueueImmediate(ev);
+                if(!ChannelEventBlockedByMute(ev, state))
+                    EnqueueImmediate(ev);
             }
         }
         break;
@@ -808,7 +860,8 @@ void MixerTransport::HandleMidiMessage(MidiEvent msg, const AppState& state)
             ev.ch   = msg.channel;
             ev.a    = bend & 0x7F;
             ev.b    = (bend >> 7) & 0x7F;
-            EnqueueImmediate(ev);
+            if(!ChannelEventBlockedByMute(ev, state))
+                EnqueueImmediate(ev);
         }
         break;
 

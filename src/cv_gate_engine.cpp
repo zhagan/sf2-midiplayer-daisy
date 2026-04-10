@@ -16,6 +16,7 @@ constexpr float kCvInMinBpm   = 20.0f;
 constexpr float kCvInMaxBpm   = 300.0f;
 constexpr float kCvOutMaxVolt = 5.0f;
 constexpr float kGatePulseMs  = 10.0f;
+constexpr int   kCvPitchBaseNote = 24;
 
 float Clamp01(float v)
 {
@@ -35,7 +36,10 @@ float MidiNoteToVoltage(int note)
 {
     if(note < 0)
         return 0.0f;
-    const float volts = static_cast<float>(note) / 12.0f;
+    const int note_offset = note - kCvPitchBaseNote;
+    if(note_offset <= 0)
+        return 0.0f;
+    const float volts = static_cast<float>(note_offset) / 12.0f;
     if(volts > kCvOutMaxVolt)
         return kCvOutMaxVolt;
     return volts;
@@ -132,7 +136,7 @@ void CvGateEngine::Update(const AppState& state, const MixerTransport& transport
 
     live_bpm_ = 0;
 
-    for(size_t i = 0; i < 2; i++)
+    for(size_t i = 0; i < 1; i++)
     {
         const float cv_value = ReadCvInput(i);
         switch(state.cv_gate.cv_in[i].mode)
@@ -143,6 +147,12 @@ void CvGateEngine::Update(const AppState& state, const MixerTransport& transport
                 live_bpm_ = static_cast<int>(std::lround(kCvInMinBpm
                                                          + cv_value * (kCvInMaxBpm - kCvInMinBpm)));
                 break;
+            case CvInMode::ChannelPitch:
+            {
+                const uint16_t bend = static_cast<uint16_t>(std::lround(cv_value * 16383.0f));
+                SynthPitchBend(state.cv_gate.cv_in[i].channel, bend);
+            }
+                break;
             case CvInMode::ChannelCc:
                 SynthControlChange(state.cv_gate.cv_in[i].channel,
                                    state.cv_gate.cv_in[i].cc,
@@ -151,8 +161,7 @@ void CvGateEngine::Update(const AppState& state, const MixerTransport& transport
         }
     }
 
-    if(state.cv_gate.cv_in[0].mode != CvInMode::MasterVolume
-       && state.cv_gate.cv_in[1].mode != CvInMode::MasterVolume)
+    if(state.cv_gate.cv_in[0].mode != CvInMode::MasterVolume)
     {
         SynthSetExternalGain(1.0f);
     }
@@ -185,7 +194,7 @@ void CvGateEngine::Update(const AppState& state, const MixerTransport& transport
         dsy_gpio_write(i == 0 ? &hw_->gate_out_1 : &hw_->gate_out_2, gate_high);
     }
 
-    for(size_t i = 0; i < 2; i++)
+    for(size_t i = 0; i < 1; i++)
     {
         float voltage = 0.0f;
         switch(state.cv_gate.cv_out[i].mode)

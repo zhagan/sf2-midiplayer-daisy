@@ -8,6 +8,7 @@
 #include "daisy_patch_sm.h"
 #include "hid/midi.h"
 #include "media_library.h"
+#include "midi_routing_persist.h"
 #include "mixer_transport.h"
 #include "sd_mount.h"
 #include "smf_player.h"
@@ -57,6 +58,216 @@ constexpr uint32_t kRenderIntervalPlayingMs    = 250;
 constexpr uint32_t kRenderIntervalUiActiveMs   = 100;
 constexpr uint32_t kUiActiveHoldMs             = 1200;
 const char*        kCvGateConfigPath           = "0:/major_midi_cv_gate.bin";
+const char*        kMidiRoutingConfigPath      = "0:/major_midi_routing.bin";
+
+enum class MidiOutputKind : uint8_t
+{
+    Notes,
+    Ccs,
+    Programs,
+    Transport,
+    Clock,
+};
+
+bool MidiOutputEnabled(const MidiOutputRouting& routing, MidiOutputKind kind)
+{
+    switch(kind)
+    {
+        case MidiOutputKind::Notes: return routing.notes;
+        case MidiOutputKind::Ccs: return routing.ccs;
+        case MidiOutputKind::Programs: return routing.programs;
+        case MidiOutputKind::Transport: return routing.transport;
+        case MidiOutputKind::Clock: return routing.clock;
+    }
+    return false;
+}
+
+template <typename Handler>
+void SendRawMidi(Handler& handler, const uint8_t* bytes, size_t size)
+{
+    uint8_t data[3]{};
+    for(size_t i = 0; i < size && i < 3; i++)
+        data[i] = bytes[i];
+    handler.SendMessage(data, size);
+}
+
+void SendToConfiguredOutputs(MidiOutputKind kind, const uint8_t* bytes, size_t size)
+{
+    if(MidiOutputEnabled(app_state.midi_routing.usb, kind))
+        SendRawMidi(usb_midi, bytes, size);
+    if(MidiOutputEnabled(app_state.midi_routing.uart, kind))
+        SendRawMidi(uart_midi, bytes, size);
+}
+
+void SendToDestinationOutput(bool to_usb, MidiOutputKind kind, const uint8_t* bytes, size_t size)
+{
+    const MidiOutputRouting& routing = to_usb ? app_state.midi_routing.usb : app_state.midi_routing.uart;
+    if(!MidiOutputEnabled(routing, kind))
+        return;
+    if(to_usb)
+        SendRawMidi(usb_midi, bytes, size);
+    else
+        SendRawMidi(uart_midi, bytes, size);
+}
+
+bool MidiEventToRawBytes(const MidiEvent& msg, uint8_t out[3], size_t& size, MidiOutputKind& kind)
+{
+    switch(msg.type)
+    {
+        case MidiMessageType::NoteOn:
+            out[0] = static_cast<uint8_t>(0x90 | (msg.channel & 0x0F));
+            out[1] = msg.data[0];
+            out[2] = msg.data[1];
+            size   = 3;
+            kind   = MidiOutputKind::Notes;
+            return true;
+
+        case MidiMessageType::NoteOff:
+            out[0] = static_cast<uint8_t>(0x80 | (msg.channel & 0x0F));
+            out[1] = msg.data[0];
+            out[2] = msg.data[1];
+            size   = 3;
+            kind   = MidiOutputKind::Notes;
+            return true;
+
+        case MidiMessageType::ControlChange:
+            out[0] = static_cast<uint8_t>(0xB0 | (msg.channel & 0x0F));
+            out[1] = msg.data[0];
+            out[2] = msg.data[1];
+            size   = 3;
+            kind   = MidiOutputKind::Ccs;
+            return true;
+
+        case MidiMessageType::ProgramChange:
+            out[0] = static_cast<uint8_t>(0xC0 | (msg.channel & 0x0F));
+            out[1] = msg.data[0];
+            size   = 2;
+            kind   = MidiOutputKind::Programs;
+            return true;
+
+        case MidiMessageType::ChannelMode:
+            if(msg.cm_type == ChannelModeType::AllNotesOff || msg.cm_type == ChannelModeType::AllSoundOff)
+            {
+                out[0] = static_cast<uint8_t>(0xB0 | (msg.channel & 0x0F));
+                out[1] = msg.cm_type == ChannelModeType::AllSoundOff ? 120 : 123;
+                out[2] = 0;
+                size   = 3;
+                kind   = MidiOutputKind::Ccs;
+                return true;
+            }
+            break;
+
+        case MidiMessageType::SystemRealTime:
+            switch(msg.srt_type)
+            {
+                case SystemRealTimeType::TimingClock:
+                    out[0] = 0xF8;
+                    size   = 1;
+                    kind   = MidiOutputKind::Clock;
+                    return true;
+                case SystemRealTimeType::Start:
+                    out[0] = 0xFA;
+                    size   = 1;
+                    kind   = MidiOutputKind::Transport;
+                    return true;
+                case SystemRealTimeType::Continue:
+                    out[0] = 0xFB;
+                    size   = 1;
+                    kind   = MidiOutputKind::Transport;
+                    return true;
+                case SystemRealTimeType::Stop:
+                    out[0] = 0xFC;
+                    size   = 1;
+                    kind   = MidiOutputKind::Transport;
+                    return true;
+                default: break;
+            }
+            break;
+
+        default: break;
+    }
+
+    return false;
+}
+
+bool MidiEvToRawBytes(const MidiEv& ev, uint8_t out[3], size_t& size, MidiOutputKind& kind)
+{
+    switch(ev.type)
+    {
+        case EvType::NoteOn:
+            out[0] = static_cast<uint8_t>(0x90 | (ev.ch & 0x0F));
+            out[1] = ev.a;
+            out[2] = ev.b;
+            size   = 3;
+            kind   = MidiOutputKind::Notes;
+            return true;
+        case EvType::NoteOff:
+            out[0] = static_cast<uint8_t>(0x80 | (ev.ch & 0x0F));
+            out[1] = ev.a;
+            out[2] = 0;
+            size   = 3;
+            kind   = MidiOutputKind::Notes;
+            return true;
+        case EvType::Program:
+            out[0] = static_cast<uint8_t>(0xC0 | (ev.ch & 0x0F));
+            out[1] = ev.a;
+            size   = 2;
+            kind   = MidiOutputKind::Programs;
+            return true;
+        case EvType::ControlChange:
+            out[0] = static_cast<uint8_t>(0xB0 | (ev.ch & 0x0F));
+            out[1] = ev.a;
+            out[2] = ev.b;
+            size   = 3;
+            kind   = MidiOutputKind::Ccs;
+            return true;
+        case EvType::AllSoundOff:
+            out[0] = static_cast<uint8_t>(0xB0 | (ev.ch & 0x0F));
+            out[1] = 120;
+            out[2] = 0;
+            size   = 3;
+            kind   = MidiOutputKind::Ccs;
+            return true;
+        case EvType::AllNotesOff:
+            out[0] = static_cast<uint8_t>(0xB0 | (ev.ch & 0x0F));
+            out[1] = 123;
+            out[2] = 0;
+            size   = 3;
+            kind   = MidiOutputKind::Ccs;
+            return true;
+        case EvType::PitchBend:
+        default: break;
+    }
+    return false;
+}
+
+void ForwardScheduledMidiOut(const MidiEv& ev, void*)
+{
+    uint8_t        bytes[3]{};
+    size_t         size = 0;
+    MidiOutputKind kind = MidiOutputKind::Notes;
+    if(MidiEvToRawBytes(ev, bytes, size, kind))
+        SendToConfiguredOutputs(kind, bytes, size);
+}
+
+void MaybeForwardThru(const MidiEvent& msg, bool from_usb)
+{
+    const bool to_uart = from_usb && app_state.midi_routing.usb_in_to_uart;
+    const bool to_usb  = !from_usb && app_state.midi_routing.uart_in_to_usb;
+    if(!to_uart && !to_usb)
+        return;
+
+    uint8_t        bytes[3]{};
+    size_t         size = 0;
+    MidiOutputKind kind = MidiOutputKind::Notes;
+    if(!MidiEventToRawBytes(msg, bytes, size, kind))
+        return;
+
+    if(to_uart)
+        SendToDestinationOutput(false, kind, bytes, size);
+    if(to_usb)
+        SendToDestinationOutput(true, kind, bytes, size);
+}
 
 void ServiceIncomingMidi()
 {
@@ -81,6 +292,7 @@ void ServiceIncomingMidi()
                 default: break;
             }
         }
+        MaybeForwardThru(msg, true);
         transport.HandleMidiMessage(msg, app_state);
     }
 
@@ -105,6 +317,7 @@ void ServiceIncomingMidi()
                 default: break;
             }
         }
+        MaybeForwardThru(msg, false);
         transport.HandleMidiMessage(msg, app_state);
     }
 }
@@ -380,9 +593,10 @@ bool SaveAllSettings(uint32_t now_ms)
         midi_ok = major_midi::WriteMajorMidiMetaEvent(midi_path, midi_settings);
 
     const bool cv_ok = SaveCvGateConfig(kCvGateConfigPath, app_state.cv_gate);
+    const bool midi_routing_ok = SaveMidiRoutingConfig(kMidiRoutingConfigPath, app_state.midi_routing);
 
     const bool reload_ok = LoadSelectedMedia(midi_path[0] != '\0', sf2_path[0] != '\0', now_ms);
-    if(midi_ok && cv_ok && reload_ok)
+    if(midi_ok && cv_ok && midi_routing_ok && reload_ok)
     {
         app_state.ui_mode          = UiMode::Performance;
         app_state.menu_page        = MenuPage::Main;
@@ -421,6 +635,7 @@ int main(void)
     smf_player.SetLookaheadSamples(hw.AudioBlockSize() * 256);
     smf_player.SetTempoScale(1.0f);
     transport.Init(hw.AudioSampleRate(), smf_player);
+    transport.SetMidiOutputCallback(ForwardScheduledMidiOut, nullptr);
     cv_gate_engine.Init(hw, hw.AudioSampleRate());
     midi_clock_sync.Init(hw.AudioSampleRate(), ClockSync::PulseMode::MIDI_24PPQN);
     midi_clock_sync.SetUseExternalClock(true);
@@ -435,6 +650,7 @@ int main(void)
     if(sd_ok)
     {
         LoadCvGateConfig(kCvGateConfigPath, app_state.cv_gate);
+        LoadMidiRoutingConfig(kMidiRoutingConfigPath, app_state.midi_routing);
         LoadSelectedMedia(true, true, System::GetNow());
         if(media_library.MidiCount() > 0 && media_library.SoundFontCount() > 0)
             SetOverlay(app_state, "Ready", System::GetNow());
@@ -456,6 +672,8 @@ int main(void)
     uint32_t render_ms          = System::GetNow();
     uint32_t last_ui_activity_ms = render_ms;
     bool     ui_dirty            = true;
+    bool     last_transport_playing = false;
+    uint64_t next_midi_clock_sample = 0;
     while(1)
     {
         const uint32_t now = System::GetNow();
@@ -557,6 +775,46 @@ int main(void)
 
         if(audio_started)
             transport.Update(effective_state);
+
+        const bool internal_transport_master = !effective_state.sync_external;
+        const bool transport_started
+            = effective_state.transport_playing && !last_transport_playing && internal_transport_master;
+        const bool transport_stopped
+            = !effective_state.transport_playing && last_transport_playing && internal_transport_master;
+
+        if(transport_started)
+        {
+            const uint8_t start = 0xFA;
+            SendToConfiguredOutputs(MidiOutputKind::Transport, &start, 1);
+            next_midi_clock_sample = transport.SampleClock();
+        }
+        else if(transport_stopped)
+        {
+            const uint8_t stop = 0xFC;
+            SendToConfiguredOutputs(MidiOutputKind::Transport, &stop, 1);
+        }
+
+        if(audio_started && effective_state.transport_playing && internal_transport_master
+           && (app_state.midi_routing.usb.clock || app_state.midi_routing.uart.clock))
+        {
+            const float bpm = effective_state.bpm > 0 ? static_cast<float>(effective_state.bpm) : 120.0f;
+            const double samples_per_clock = (hw.AudioSampleRate() * 60.0) / (static_cast<double>(bpm) * 24.0);
+            const uint64_t current_sample  = transport.SampleClock();
+            if(next_midi_clock_sample == 0)
+                next_midi_clock_sample = current_sample;
+            while(current_sample >= next_midi_clock_sample)
+            {
+                const uint8_t clock = 0xF8;
+                SendToConfiguredOutputs(MidiOutputKind::Clock, &clock, 1);
+                next_midi_clock_sample += static_cast<uint64_t>(samples_per_clock > 1.0 ? samples_per_clock : 1.0);
+            }
+        }
+        else if(!effective_state.transport_playing)
+        {
+            next_midi_clock_sample = 0;
+        }
+
+        last_transport_playing = effective_state.transport_playing;
 
         effective_state.current_measure
             = effective_state.transport_playing

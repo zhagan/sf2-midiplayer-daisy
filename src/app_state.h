@@ -31,10 +31,28 @@ enum class MenuPage : uint8_t
     Fx,
     Song,
     Sf2,
+    Midi,
     CvGate,
     LoadMidi,
     LoadSf2,
     SaveAllConfirm,
+};
+
+enum class MidiSettingsMenuItem : uint8_t
+{
+    Back,
+    UsbNotes,
+    UsbCcs,
+    UsbPrograms,
+    UsbTransport,
+    UsbClock,
+    UartNotes,
+    UartCcs,
+    UartPrograms,
+    UartTransport,
+    UartClock,
+    UsbInToUart,
+    UartInToUsb,
 };
 
 enum class CvGateMenuItem : uint8_t
@@ -67,6 +85,7 @@ enum class CvInMode : uint8_t
     Off,
     MasterVolume,
     Bpm,
+    ChannelPitch,
     ChannelCc,
 };
 
@@ -129,6 +148,23 @@ struct CvGateConfig
     CvOutputConfig   cv_out[2]{};
 };
 
+struct MidiOutputRouting
+{
+    bool notes     = false;
+    bool ccs       = false;
+    bool programs  = false;
+    bool transport = false;
+    bool clock     = false;
+};
+
+struct MidiRoutingConfig
+{
+    MidiOutputRouting usb{};
+    MidiOutputRouting uart{};
+    bool              usb_in_to_uart = false;
+    bool              uart_in_to_usb = false;
+};
+
 struct ChannelState
 {
     uint8_t volume      = 100;
@@ -187,11 +223,13 @@ struct AppState
     bool         pending_save_all        = false;
     bool         settings_dirty          = false;
     bool         cv_gate_dirty           = false;
+    bool         midi_routing_dirty      = false;
     bool         sync_external           = false;
     bool         sync_locked             = false;
     uint16_t     current_measure         = 1;
     bool         saving_all              = false;
     CvGateConfig cv_gate{};
+    MidiRoutingConfig midi_routing{};
     OverlayState overlay{};
     ChannelState channels[16]{};
 };
@@ -248,6 +286,7 @@ inline const char* MenuPageName(MenuPage page)
         case MenuPage::Fx: return "FX";
         case MenuPage::Song: return "Song";
         case MenuPage::Sf2: return "SF2";
+        case MenuPage::Midi: return "MIDI";
         case MenuPage::CvGate: return "CV/Gate";
         case MenuPage::LoadMidi: return "Load MIDI";
         case MenuPage::LoadSf2: return "Load SF2";
@@ -263,6 +302,7 @@ inline const char* CvInModeName(CvInMode mode)
         case CvInMode::Off: return "Off";
         case CvInMode::MasterVolume: return "MasterVol";
         case CvInMode::Bpm: return "BPM";
+        case CvInMode::ChannelPitch: return "Ch Pitch";
         case CvInMode::ChannelCc: return "Ch CC";
     }
     return "";
@@ -316,7 +356,7 @@ inline const char* NotePriorityName(NotePriority priority)
 
 inline bool CvInModeNeedsChannel(CvInMode mode)
 {
-    return mode == CvInMode::ChannelCc;
+    return mode == CvInMode::ChannelPitch || mode == CvInMode::ChannelCc;
 }
 
 inline bool CvInModeNeedsCc(CvInMode mode)
@@ -361,9 +401,6 @@ inline size_t CvGateVisibleItemCount(const CvGateConfig& config)
     add(); // CV1 Mode
     add(CvInModeNeedsChannel(config.cv_in[0].mode));
     add(CvInModeNeedsCc(config.cv_in[0].mode));
-    add(); // CV2 Mode
-    add(CvInModeNeedsChannel(config.cv_in[1].mode));
-    add(CvInModeNeedsCc(config.cv_in[1].mode));
     add(); // G1 Mode
     add(GateOutModeNeedsChannel(config.gate_out[0].mode));
     add(GateOutModeNeedsResolution(config.gate_out[0].mode));
@@ -374,10 +411,6 @@ inline size_t CvGateVisibleItemCount(const CvGateConfig& config)
     add(CvOutModeNeedsChannel(config.cv_out[0].mode));
     add(CvOutModeNeedsCc(config.cv_out[0].mode));
     add(CvOutModeNeedsPriority(config.cv_out[0].mode));
-    add(); // O2 Mode
-    add(CvOutModeNeedsChannel(config.cv_out[1].mode));
-    add(CvOutModeNeedsCc(config.cv_out[1].mode));
-    add(CvOutModeNeedsPriority(config.cv_out[1].mode));
     return count;
 }
 
@@ -401,12 +434,6 @@ inline CvGateMenuItem CvGateVisibleItemAt(const CvGateConfig& config, size_t vis
         return CvGateMenuItem::Cv1Channel;
     if(match(CvGateMenuItem::Cv1Cc, CvInModeNeedsCc(config.cv_in[0].mode)))
         return CvGateMenuItem::Cv1Cc;
-    if(match(CvGateMenuItem::Cv2Mode))
-        return CvGateMenuItem::Cv2Mode;
-    if(match(CvGateMenuItem::Cv2Channel, CvInModeNeedsChannel(config.cv_in[1].mode)))
-        return CvGateMenuItem::Cv2Channel;
-    if(match(CvGateMenuItem::Cv2Cc, CvInModeNeedsCc(config.cv_in[1].mode)))
-        return CvGateMenuItem::Cv2Cc;
     if(match(CvGateMenuItem::Gate1Mode))
         return CvGateMenuItem::Gate1Mode;
     if(match(CvGateMenuItem::Gate1Channel,
@@ -433,16 +460,6 @@ inline CvGateMenuItem CvGateVisibleItemAt(const CvGateConfig& config, size_t vis
     if(match(CvGateMenuItem::CvOut1Priority,
              CvOutModeNeedsPriority(config.cv_out[0].mode)))
         return CvGateMenuItem::CvOut1Priority;
-    if(match(CvGateMenuItem::CvOut2Mode))
-        return CvGateMenuItem::CvOut2Mode;
-    if(match(CvGateMenuItem::CvOut2Channel,
-             CvOutModeNeedsChannel(config.cv_out[1].mode)))
-        return CvGateMenuItem::CvOut2Channel;
-    if(match(CvGateMenuItem::CvOut2Cc, CvOutModeNeedsCc(config.cv_out[1].mode)))
-        return CvGateMenuItem::CvOut2Cc;
-    if(match(CvGateMenuItem::CvOut2Priority,
-             CvOutModeNeedsPriority(config.cv_out[1].mode)))
-        return CvGateMenuItem::CvOut2Priority;
     return CvGateMenuItem::Back;
 }
 

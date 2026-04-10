@@ -26,7 +26,7 @@ int ClampInt(int value, int min_value, int max_value)
 
 size_t MainMenuItemCount()
 {
-    return 7;
+    return 8;
 }
 
 size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
@@ -37,6 +37,7 @@ size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
         case MenuPage::Fx: return 6;
         case MenuPage::Song: return 6;
         case MenuPage::Sf2: return 10;
+        case MenuPage::Midi: return 13;
         case MenuPage::CvGate: return CvGateVisibleItemCount(state.cv_gate);
         case MenuPage::LoadMidi: return 1 + library.MidiCount();
         case MenuPage::LoadSf2: return 1 + library.SoundFontCount();
@@ -161,22 +162,18 @@ bool UiController::HandleEvent(const UiEvent& event,
             }
             if(state_->ui_mode == UiMode::Menu || state_->ui_mode == UiMode::MenuPage)
                 return true;
-            if(state_->ui_mode == UiMode::Mute)
+            if(event.index <= 3)
             {
                 SelectBank(event.index, now_ms);
                 SetMode(UiMode::Mute, now_ms, "Mute Mode");
                 return true;
             }
+            if(state_->ui_mode == UiMode::Mute)
+            {
+                return true;
+            }
             switch(event.index)
             {
-                case 0: CycleKnobPage(now_ms); return true;
-                case 1:
-                    SetMode(state_->ui_mode == UiMode::Mute ? UiMode::Performance
-                                                            : UiMode::Mute,
-                            now_ms,
-                            state_->ui_mode == UiMode::Mute ? "Mute Off"
-                                                            : "Mute Mode");
-                    return true;
                 case 2:
                 {
                     const bool mute_all = !AreAllChannelsMuted(*state_);
@@ -358,8 +355,9 @@ void UiController::ActivateMenuRoot(const MediaLibrary&, uint32_t now_ms)
         case 2: EnterMenuPage(MenuPage::Fx, now_ms); break;
         case 3: EnterMenuPage(MenuPage::Song, now_ms); break;
         case 4: EnterMenuPage(MenuPage::Sf2, now_ms); break;
-        case 5: EnterMenuPage(MenuPage::CvGate, now_ms); break;
-        case 6: EnterMenuPage(MenuPage::SaveAllConfirm, now_ms); break;
+        case 5: EnterMenuPage(MenuPage::Midi, now_ms); break;
+        case 6: EnterMenuPage(MenuPage::CvGate, now_ms); break;
+        case 7: EnterMenuPage(MenuPage::SaveAllConfirm, now_ms); break;
         default: break;
     }
 }
@@ -402,6 +400,11 @@ void UiController::ActivateMenuPage(const MediaLibrary& library, uint32_t now_ms
         case MenuPage::Sf2:
             state_->menu_editing = true;
             SetOverlay(*state_, "Edit SF2", now_ms, 300);
+            break;
+
+        case MenuPage::Midi:
+            state_->menu_editing = true;
+            SetOverlay(*state_, "Edit MIDI", now_ms, 300);
             break;
 
         case MenuPage::CvGate:
@@ -621,6 +624,51 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                     break;
                 default: return;
             }
+            break;
+
+        case MenuPage::Midi:
+            switch(static_cast<MidiSettingsMenuItem>(state_->menu_page_cursor))
+            {
+                case MidiSettingsMenuItem::UsbNotes:
+                    state_->midi_routing.usb.notes = !state_->midi_routing.usb.notes;
+                    break;
+                case MidiSettingsMenuItem::UsbCcs:
+                    state_->midi_routing.usb.ccs = !state_->midi_routing.usb.ccs;
+                    break;
+                case MidiSettingsMenuItem::UsbPrograms:
+                    state_->midi_routing.usb.programs = !state_->midi_routing.usb.programs;
+                    break;
+                case MidiSettingsMenuItem::UsbTransport:
+                    state_->midi_routing.usb.transport = !state_->midi_routing.usb.transport;
+                    break;
+                case MidiSettingsMenuItem::UsbClock:
+                    state_->midi_routing.usb.clock = !state_->midi_routing.usb.clock;
+                    break;
+                case MidiSettingsMenuItem::UartNotes:
+                    state_->midi_routing.uart.notes = !state_->midi_routing.uart.notes;
+                    break;
+                case MidiSettingsMenuItem::UartCcs:
+                    state_->midi_routing.uart.ccs = !state_->midi_routing.uart.ccs;
+                    break;
+                case MidiSettingsMenuItem::UartPrograms:
+                    state_->midi_routing.uart.programs = !state_->midi_routing.uart.programs;
+                    break;
+                case MidiSettingsMenuItem::UartTransport:
+                    state_->midi_routing.uart.transport = !state_->midi_routing.uart.transport;
+                    break;
+                case MidiSettingsMenuItem::UartClock:
+                    state_->midi_routing.uart.clock = !state_->midi_routing.uart.clock;
+                    break;
+                case MidiSettingsMenuItem::UsbInToUart:
+                    state_->midi_routing.usb_in_to_uart = !state_->midi_routing.usb_in_to_uart;
+                    break;
+                case MidiSettingsMenuItem::UartInToUsb:
+                    state_->midi_routing.uart_in_to_usb = !state_->midi_routing.uart_in_to_usb;
+                    break;
+                case MidiSettingsMenuItem::Back:
+                default: return;
+            }
+            state_->midi_routing_dirty = true;
             break;
 
         case MenuPage::CvGate:
