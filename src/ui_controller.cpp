@@ -34,13 +34,13 @@ size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
     switch(state.menu_page)
     {
         case MenuPage::Main: return MainMenuItemCount();
-        case MenuPage::Fx: return 6;
-        case MenuPage::Song: return 6;
-        case MenuPage::Sf2: return 10;
-        case MenuPage::Midi: return 13;
+        case MenuPage::Fx: return 5;
+        case MenuPage::Song: return 5;
+        case MenuPage::Sf2: return 9;
+        case MenuPage::Midi: return 12;
         case MenuPage::CvGate: return CvGateVisibleItemCount(state.cv_gate);
-        case MenuPage::LoadMidi: return 1 + library.MidiCount();
-        case MenuPage::LoadSf2: return 1 + library.SoundFontCount();
+        case MenuPage::LoadMidi: return library.MidiCount();
+        case MenuPage::LoadSf2: return library.SoundFontCount();
         case MenuPage::SaveAllConfirm: return 2;
     }
     return 0;
@@ -387,7 +387,7 @@ void UiController::CycleKnobPage(int32_t delta, uint32_t now_ms)
     if(delta == 0)
         return;
 
-    const int count = 6;
+    const int count = 7;
     int next = static_cast<int>(state_->knob_page) + (delta > 0 ? 1 : -1);
     if(next < 0)
         next = count - 1;
@@ -543,12 +543,6 @@ void UiController::ActivateMenuPage(const MediaLibrary& library, uint32_t now_ms
         return;
     }
 
-    if(state_->menu_page_cursor == 0)
-    {
-        ExitMenuPage(now_ms);
-        return;
-    }
-
     switch(state_->menu_page)
     {
         case MenuPage::Fx:
@@ -557,7 +551,7 @@ void UiController::ActivateMenuPage(const MediaLibrary& library, uint32_t now_ms
             break;
 
         case MenuPage::Song:
-            if(state_->menu_page_cursor == 5)
+            if(state_->menu_page_cursor == 4)
             {
                 state_->pending_save_settings = true;
                 SetOverlay(*state_, "Save MIDI", now_ms);
@@ -586,7 +580,7 @@ void UiController::ActivateMenuPage(const MediaLibrary& library, uint32_t now_ms
 
         case MenuPage::LoadMidi:
         {
-            const size_t idx = state_->menu_page_cursor - 1;
+            const size_t idx = state_->menu_page_cursor;
             if(idx < library.MidiCount())
             {
                 state_->selected_midi_index = idx;
@@ -598,7 +592,7 @@ void UiController::ActivateMenuPage(const MediaLibrary& library, uint32_t now_ms
 
         case MenuPage::LoadSf2:
         {
-            const size_t idx = state_->menu_page_cursor - 1;
+            const size_t idx = state_->menu_page_cursor;
             if(idx < library.SoundFontCount())
             {
                 state_->selected_sf2_index = idx;
@@ -634,35 +628,35 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
         case MenuPage::Fx:
             switch(state_->menu_page_cursor)
             {
-                case 1:
+                case 0:
                     state_->fx_reverb_time += delta > 0 ? 0.02f : -0.02f;
                     if(state_->fx_reverb_time < 0.0f)
                         state_->fx_reverb_time = 0.0f;
                     if(state_->fx_reverb_time > 1.0f)
                         state_->fx_reverb_time = 1.0f;
                     break;
-                case 2:
+                case 1:
                     state_->fx_reverb_lpf_hz += delta > 0 ? 200.0f : -200.0f;
                     if(state_->fx_reverb_lpf_hz < 200.0f)
                         state_->fx_reverb_lpf_hz = 200.0f;
                     if(state_->fx_reverb_lpf_hz > 18000.0f)
                         state_->fx_reverb_lpf_hz = 18000.0f;
                     break;
-                case 3:
+                case 2:
                     state_->fx_reverb_hpf_hz += delta > 0 ? 50.0f : -50.0f;
                     if(state_->fx_reverb_hpf_hz < 20.0f)
                         state_->fx_reverb_hpf_hz = 20.0f;
                     if(state_->fx_reverb_hpf_hz > 1000.0f)
                         state_->fx_reverb_hpf_hz = 1000.0f;
                     break;
-                case 4:
+                case 3:
                     state_->fx_chorus_depth += delta > 0 ? 0.02f : -0.02f;
                     if(state_->fx_chorus_depth < 0.0f)
                         state_->fx_chorus_depth = 0.0f;
                     if(state_->fx_chorus_depth > 1.0f)
                         state_->fx_chorus_depth = 1.0f;
                     break;
-                case 5:
+                case 4:
                     state_->fx_chorus_speed_hz += delta > 0 ? 0.05f : -0.05f;
                     if(state_->fx_chorus_speed_hz < 0.05f)
                         state_->fx_chorus_speed_hz = 0.05f;
@@ -676,7 +670,7 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
         case MenuPage::Song:
             switch(state_->menu_page_cursor)
             {
-                case 1:
+                case 0:
                     if(state_->song_bpm_override == 0)
                         state_->song_bpm_override = static_cast<uint16_t>(state_->bpm);
                     state_->song_bpm_override
@@ -685,16 +679,16 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                                          20,
                                                          300));
                     break;
-                case 2:
+                case 1:
                     state_->song_loop_enabled = !state_->song_loop_enabled;
                     NormalizeLoopState();
                     break;
-                case 3:
+                case 2:
                     state_->loop_start_measure
                         = ClampInt(state_->loop_start_measure + (delta > 0 ? 1 : -1), 1, 999);
                     NormalizeLoopState();
                     break;
-                case 4:
+                case 3:
                     state_->loop_length_beats
                         = ClampInt(state_->loop_length_beats + (delta > 0 ? 1 : -1), 1, 128);
                     NormalizeLoopState();
@@ -706,25 +700,25 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
         case MenuPage::Sf2:
             switch(state_->menu_page_cursor)
             {
-                case 1:
+                case 0:
                     state_->sf2_max_voices
                         = static_cast<uint8_t>(ClampInt(static_cast<int>(state_->sf2_max_voices)
                                                            + (delta > 0 ? 1 : -1),
                                                        4,
                                                        32));
                     break;
-                case 2:
+                case 1:
                     state_->sf2_channel
                         = static_cast<uint8_t>(ClampInt(static_cast<int>(state_->sf2_channel)
                                                             + (delta > 0 ? 1 : -1),
                                                         0,
                                                         15));
                     break;
-                case 3:
+                case 2:
                     state_->channels[state_->sf2_channel].muted
                         = !state_->channels[state_->sf2_channel].muted;
                     break;
-                case 4:
+                case 3:
                     state_->channels[state_->sf2_channel].volume
                         = static_cast<uint8_t>(
                             ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].volume)
@@ -732,7 +726,7 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      0,
                                      127));
                     break;
-                case 5:
+                case 4:
                     state_->channels[state_->sf2_channel].pan
                         = static_cast<uint8_t>(
                             ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].pan)
@@ -740,7 +734,7 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      0,
                                      127));
                     break;
-                case 6:
+                case 5:
                     state_->channels[state_->sf2_channel].reverb_send
                         = static_cast<uint8_t>(
                             ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].reverb_send)
@@ -748,7 +742,7 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      0,
                                      127));
                     break;
-                case 7:
+                case 6:
                     state_->channels[state_->sf2_channel].chorus_send
                         = static_cast<uint8_t>(
                             ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].chorus_send)
@@ -756,7 +750,7 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      0,
                                      127));
                     break;
-                case 8:
+                case 7:
                     state_->channels[state_->sf2_channel].program_override
                         = static_cast<int8_t>(
                             ClampInt(static_cast<int>(state_->channels[state_->sf2_channel].program_override)
@@ -764,7 +758,7 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      -1,
                                      127));
                     break;
-                case 9:
+                case 8:
                     state_->sf2_transpose
                         = static_cast<int8_t>(ClampInt(static_cast<int>(state_->sf2_transpose)
                                                            + (delta > 0 ? 1 : -1),
@@ -814,7 +808,6 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                 case MidiSettingsMenuItem::UartInToUsb:
                     state_->midi_routing.uart_in_to_usb = !state_->midi_routing.uart_in_to_usb;
                     break;
-                case MidiSettingsMenuItem::Back:
                 default: return;
             }
             state_->midi_routing_dirty = true;
@@ -860,6 +853,18 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                         ClampInt(static_cast<int>(cv_gate.cv_in[1].cc) + (delta > 0 ? 1 : -1),
                                  0,
                                  127));
+                    break;
+                case CvGateMenuItem::GateIn1Mode:
+                    cv_gate.gate_in[0].mode = static_cast<GateInMode>(
+                        ClampInt(static_cast<int>(cv_gate.gate_in[0].mode) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(GateInMode::SyncIn)));
+                    break;
+                case CvGateMenuItem::GateIn2Mode:
+                    cv_gate.gate_in[1].mode = static_cast<GateInMode>(
+                        ClampInt(static_cast<int>(cv_gate.gate_in[1].mode) + (delta > 0 ? 1 : -1),
+                                 0,
+                                 static_cast<int>(GateInMode::SyncIn)));
                     break;
                 case CvGateMenuItem::Gate1Mode:
                     cv_gate.gate_out[0].mode = static_cast<GateOutMode>(
@@ -945,7 +950,6 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                                      ? NotePriority::Lowest
                                                      : NotePriority::Highest;
                     break;
-                case CvGateMenuItem::Back:
                 default: return;
             }
             state_->cv_gate_dirty = true;
@@ -994,6 +998,11 @@ bool UiController::HandleKnob(uint8_t index, float value, uint32_t now_ms)
         case KnobPage::ChorusSend:
             target = MidiToNorm(state_->channels[ch].chorus_send);
             break;
+        case KnobPage::Program:
+            target = MidiToNorm(state_->channels[ch].program_override >= 0
+                                    ? static_cast<uint8_t>(state_->channels[ch].program_override)
+                                    : state_->channels[ch].current_program);
+            break;
         case KnobPage::Mute: target = state_->channels[ch].muted ? 1.0f : 0.0f; break;
         case KnobPage::Bpm: return false;
     }
@@ -1015,6 +1024,9 @@ bool UiController::HandleKnob(uint8_t index, float value, uint32_t now_ms)
             break;
         case KnobPage::ChorusSend:
             state_->channels[ch].chorus_send = midi_value;
+            break;
+        case KnobPage::Program:
+            state_->channels[ch].program_override = static_cast<int8_t>(midi_value);
             break;
         case KnobPage::Mute:
             state_->channels[ch].muted = value >= 0.5f;

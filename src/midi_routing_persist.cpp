@@ -1,9 +1,5 @@
 #include "midi_routing_persist.h"
-
-extern "C"
-{
-#include "ff.h"
-}
+#include "persist_file.h"
 
 namespace major_midi
 {
@@ -11,7 +7,7 @@ namespace
 {
 static constexpr uint8_t kMagic[4] = {'M', 'M', 'M', 'R'};
 static constexpr uint8_t kVersion  = 1;
-static constexpr UINT    kFileSize = 9;
+static constexpr size_t  kFileSize = 9;
 
 uint8_t PackOutput(const MidiOutputRouting& routing)
 {
@@ -61,34 +57,69 @@ bool ReadConfig(const uint8_t* in, MidiRoutingConfig& config)
 
 bool LoadMidiRoutingConfig(const char* path, MidiRoutingConfig& config)
 {
-    FIL     file;
-    UINT    read = 0;
     uint8_t data[kFileSize];
-
+    FIL&    file = SharedPersistFile();
     if(f_open(&file, path, FA_READ) != FR_OK)
         return false;
 
-    const FRESULT result = f_read(&file, data, kFileSize, &read);
-    f_close(&file);
-    if(result != FR_OK || read != kFileSize)
+    UINT read = 0;
+    const FRESULT read_result  = f_read(&file, data, kFileSize, &read);
+    const FRESULT close_result = f_close(&file);
+    if(read_result != FR_OK || close_result != FR_OK || read != kFileSize)
         return false;
 
     return ReadConfig(data, config);
 }
 
-bool SaveMidiRoutingConfig(const char* path, const MidiRoutingConfig& config)
+bool SaveMidiRoutingConfig(const char* path,
+                           const MidiRoutingConfig& config,
+                           PersistWriteStage*       failed_stage,
+                           int*                     result_code,
+                           PersistProgressFn        progress_fn,
+                           void*                    progress_ctx)
 {
-    FIL     file;
-    UINT    written = 0;
     uint8_t data[kFileSize];
     WriteConfig(data, config);
 
-    if(f_open(&file, path, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
-        return false;
+    if(result_code != nullptr)
+        *result_code = -1;
 
-    const FRESULT result = f_write(&file, data, kFileSize, &written);
-    f_close(&file);
-    return result == FR_OK && written == kFileSize;
+    if(failed_stage != nullptr)
+        *failed_stage = PersistWriteStage::Open;
+    if(progress_fn != nullptr)
+        progress_fn(PersistWriteStage::Open, progress_ctx);
+    FIL&          file        = SharedPersistFile();
+    const FRESULT open_result = f_open(&file, path, FA_CREATE_ALWAYS | FA_WRITE);
+    if(open_result != FR_OK)
+    {
+        if(result_code != nullptr)
+            *result_code = static_cast<int>(open_result);
+        return false;
+    }
+
+    if(failed_stage != nullptr)
+        *failed_stage = PersistWriteStage::Write;
+    if(progress_fn != nullptr)
+        progress_fn(PersistWriteStage::Write, progress_ctx);
+    UINT written = 0;
+    const FRESULT write_result = f_write(&file, data, kFileSize, &written);
+    if(write_result != FR_OK)
+    {
+        if(result_code != nullptr)
+            *result_code = static_cast<int>(write_result);
+    }
+    if(failed_stage != nullptr)
+        *failed_stage = PersistWriteStage::Close;
+    if(progress_fn != nullptr)
+        progress_fn(PersistWriteStage::Close, progress_ctx);
+    const FRESULT close_result = f_close(&file);
+    if(result_code != nullptr)
+        *result_code = static_cast<int>(close_result != FR_OK ? close_result : write_result);
+    if(failed_stage != nullptr)
+        *failed_stage = PersistWriteStage::Done;
+    if(progress_fn != nullptr)
+        progress_fn(PersistWriteStage::Done, progress_ctx);
+    return write_result == FR_OK && written == kFileSize && close_result == FR_OK;
 }
 
 } // namespace major_midi

@@ -9,7 +9,7 @@ static constexpr uint8_t kChannelCount = 16;
 
 struct MajorMidiSettings
 {
-    static constexpr uint8_t kVersion = 1;
+    static constexpr uint8_t kVersion = 2;
     static constexpr int8_t  kNoOverride = -1;
 
     uint8_t master_volume_max = 127;
@@ -25,6 +25,10 @@ struct MajorMidiSettings
     uint16_t loop_length_beats = 16;
     int8_t  program_override[kChannelCount];
     int8_t  pan_override[kChannelCount];
+    uint8_t volume[kChannelCount];
+    uint8_t reverb_send[kChannelCount];
+    uint8_t chorus_send[kChannelCount];
+    bool    muted[kChannelCount];
 
     void Reset();
 };

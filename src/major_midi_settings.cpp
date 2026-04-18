@@ -13,6 +13,10 @@ static constexpr uint8_t kSignature[4] = {'M', 'M', 'I', 'D'};
 static constexpr uint8_t kFlagProgramOverrides = 1 << 0;
 static constexpr uint8_t kFlagPanOverrides     = 1 << 1;
 static constexpr uint8_t kFlagLoopSettings     = 1 << 2;
+static constexpr uint8_t kFlagChannelVolume    = 1 << 3;
+static constexpr uint8_t kFlagChannelReverb    = 1 << 4;
+static constexpr uint8_t kFlagChannelChorus    = 1 << 5;
+static constexpr uint8_t kFlagChannelMute      = 1 << 6;
 
 uint8_t Clamp7Bit(int value)
 {
@@ -262,6 +266,10 @@ void MajorMidiSettings::Reset()
     {
         program_override[i] = kNoOverride;
         pan_override[i]     = kNoOverride;
+        volume[i]           = 100;
+        reverb_send[i]      = 0;
+        chorus_send[i]      = 0;
+        muted[i]            = false;
     }
 }
 
@@ -276,7 +284,7 @@ bool ParseMajorMidiPayload(const uint8_t* data,
 
     const uint8_t version = data[4];
     const uint8_t flags   = data[5];
-    if(version != MajorMidiSettings::kVersion)
+    if(version != 1 && version != MajorMidiSettings::kVersion)
         return false;
 
     settings.master_volume_max = Clamp7Bit(data[6]);
@@ -336,6 +344,36 @@ bool ParseMajorMidiPayload(const uint8_t* data,
                               : (int8_t)Clamp7Bit(value);
         }
     }
+    if(flags & kFlagChannelVolume)
+    {
+        if(offset + kChannelCount > size)
+            return false;
+        for(uint8_t i = 0; i < kChannelCount; i++)
+            settings.volume[i] = Clamp7Bit(data[offset++]);
+    }
+    if(flags & kFlagChannelReverb)
+    {
+        if(offset + kChannelCount > size)
+            return false;
+        for(uint8_t i = 0; i < kChannelCount; i++)
+            settings.reverb_send[i] = Clamp7Bit(data[offset++]);
+    }
+    if(flags & kFlagChannelChorus)
+    {
+        if(offset + kChannelCount > size)
+            return false;
+        for(uint8_t i = 0; i < kChannelCount; i++)
+            settings.chorus_send[i] = Clamp7Bit(data[offset++]);
+    }
+    if(flags & kFlagChannelMute)
+    {
+        if(offset + 2 > size)
+            return false;
+        const uint16_t mute_mask = (uint16_t(data[offset]) << 8) | data[offset + 1];
+        offset += 2;
+        for(uint8_t i = 0; i < kChannelCount; i++)
+            settings.muted[i] = ((mute_mask >> i) & 0x01u) != 0;
+    }
     if(out_version)
         *out_version = version;
     return true;
@@ -354,6 +392,17 @@ size_t BuildMajorMidiPayload(const MajorMidiSettings& settings,
        || settings.loop_start_beat != 1 || settings.loop_start_sub != 1
        || settings.loop_length_beats != 16)
         flags |= kFlagLoopSettings;
+    flags |= kFlagChannelVolume;
+    flags |= kFlagChannelReverb;
+    flags |= kFlagChannelChorus;
+    for(uint8_t i = 0; i < kChannelCount; i++)
+    {
+        if(settings.muted[i])
+        {
+            flags |= kFlagChannelMute;
+            break;
+        }
+    }
 
     size_t size = 13;
     if(flags & kFlagLoopSettings)
@@ -362,6 +411,14 @@ size_t BuildMajorMidiPayload(const MajorMidiSettings& settings,
         size += kChannelCount;
     if(flags & kFlagPanOverrides)
         size += kChannelCount;
+    if(flags & kFlagChannelVolume)
+        size += kChannelCount;
+    if(flags & kFlagChannelReverb)
+        size += kChannelCount;
+    if(flags & kFlagChannelChorus)
+        size += kChannelCount;
+    if(flags & kFlagChannelMute)
+        size += 2;
     if(!out || capacity < size)
         return size;
 
@@ -395,6 +452,32 @@ size_t BuildMajorMidiPayload(const MajorMidiSettings& settings,
     {
         for(uint8_t i = 0; i < kChannelCount; i++)
             out[offset++] = (uint8_t)settings.pan_override[i];
+    }
+    if(flags & kFlagChannelVolume)
+    {
+        for(uint8_t i = 0; i < kChannelCount; i++)
+            out[offset++] = settings.volume[i];
+    }
+    if(flags & kFlagChannelReverb)
+    {
+        for(uint8_t i = 0; i < kChannelCount; i++)
+            out[offset++] = settings.reverb_send[i];
+    }
+    if(flags & kFlagChannelChorus)
+    {
+        for(uint8_t i = 0; i < kChannelCount; i++)
+            out[offset++] = settings.chorus_send[i];
+    }
+    if(flags & kFlagChannelMute)
+    {
+        uint16_t mute_mask = 0;
+        for(uint8_t i = 0; i < kChannelCount; i++)
+        {
+            if(settings.muted[i])
+                mute_mask |= static_cast<uint16_t>(1u << i);
+        }
+        out[offset++] = static_cast<uint8_t>((mute_mask >> 8) & 0xFF);
+        out[offset++] = static_cast<uint8_t>(mute_mask & 0xFF);
     }
     return offset;
 }

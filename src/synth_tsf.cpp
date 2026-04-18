@@ -129,6 +129,7 @@ static int TsfSkip(void* data, unsigned int count)
 // -----------------------------
 static tsf* g_tsf = nullptr;
 static FIL  g_sf2file;
+static bool g_sf2file_open = false;
 static float g_sample_rate = 48000.0f;
 static Chorus   DSY_SDRAM_BSS g_chorus;
 static ReverbSc DSY_SDRAM_BSS g_reverb;
@@ -174,6 +175,7 @@ bool SynthLoadSf2(const char* path, float sampleRate, int voices)
 
     if(f_open(&g_sf2file, path, FA_READ) != FR_OK)
         return false;
+    g_sf2file_open = true;
 
     tsf_stream s{};
     s.data = &g_sf2file;
@@ -184,8 +186,13 @@ bool SynthLoadSf2(const char* path, float sampleRate, int voices)
     if(!g_tsf)
     {
         f_close(&g_sf2file);
+        g_sf2file_open = false;
         return false;
     }
+
+    // tsf_load() consumes the file during load; keep only the parsed synth in memory.
+    f_close(&g_sf2file);
+    g_sf2file_open = false;
 
     tsf_set_output(g_tsf, TSF_STEREO_INTERLEAVED, sampleRate, 0.0f);
     tsf_set_max_voices(g_tsf, voices);
@@ -220,7 +227,11 @@ void SynthUnloadSf2()
         tsf_close(g_tsf);
         g_tsf = nullptr;
     }
-    f_close(&g_sf2file);
+    if(g_sf2file_open)
+    {
+        f_close(&g_sf2file);
+        g_sf2file_open = false;
+    }
 }
 
 int SynthActiveVoiceCount()

@@ -17,8 +17,10 @@ CPP_SOURCES = \
   src/major_midi_settings.cpp \
   src/media_library.cpp \
   src/clock_sync.cpp \
+  src/persist_file.cpp \
   src/cv_gate_persist.cpp \
   src/midi_routing_persist.cpp \
+  src/performance_persist.cpp \
   src/cv_gate_engine.cpp \
   src/ui_input.cpp \
   src/ui_controller.cpp \

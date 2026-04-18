@@ -11,6 +11,7 @@
 #include "midi_routing_persist.h"
 #include "mixer_transport.h"
 #include "per/tim.h"
+#include "performance_persist.h"
 #include "sd_mount.h"
 #include "smf_player.h"
 #include "synth_tsf.h"
@@ -19,11 +20,16 @@
 #include "ui_renderer.h"
 #include "util/scopedirqblocker.h"
 
+extern "C"
+{
+#include "ff.h"
+}
+
 using namespace daisy;
 using namespace patch_sm;
 using namespace major_midi;
 
-static constexpr bool kEnableUsbLog = false;
+static constexpr bool kEnableUsbLog = true;
 
 #define LOG(...)                                  \
     do                                            \
@@ -64,8 +70,9 @@ constexpr uint32_t kRenderIntervalUiActiveMs   = 100;
 constexpr uint32_t kUiActiveHoldMs             = 1200;
 constexpr uint64_t kScheduledMidiLeadSamples   = 512;
 constexpr uint32_t kMidiTxTimerRateHz          = 2000;
-const char*        kCvGateConfigPath           = "0:/major_midi_cv_gate.bin";
-const char*        kMidiRoutingConfigPath      = "0:/major_midi_routing.bin";
+const char*        kCvGateConfigPath           = "0:/major_midi_cv_gate.cfg";
+const char*        kMidiRoutingConfigPath      = "0:/major_midi_routing.cfg";
+const char*        kPerformanceConfigPath      = "0:/major_midi_performance.cfg";
 
 enum class MidiOutputKind : uint8_t
 {
@@ -90,6 +97,78 @@ bool MidiOutputEnabled(const MidiOutputRouting& routing, MidiOutputKind kind)
         case MidiOutputKind::Clock: return routing.clock;
     }
     return false;
+}
+
+bool GateInputSyncEnabled(const CvGateConfig& config, size_t index)
+{
+    return index < 2 && config.gate_in[index].mode == GateInMode::SyncIn;
+}
+
+bool AnyGateInputSyncEnabled(const CvGateConfig& config)
+{
+    return GateInputSyncEnabled(config, 0) || GateInputSyncEnabled(config, 1);
+}
+
+const char* PersistWriteStageName(PersistWriteStage stage)
+{
+    switch(stage)
+    {
+        case PersistWriteStage::None: return "None";
+        case PersistWriteStage::Open: return "Open";
+        case PersistWriteStage::Write: return "Write";
+        case PersistWriteStage::Sync: return "Sync";
+        case PersistWriteStage::Close: return "Close";
+        case PersistWriteStage::Done: return "Done";
+    }
+    return "?";
+}
+
+const char* FatFsResultName(int code)
+{
+    switch(code)
+    {
+        case FR_OK: return "FR_OK";
+        case FR_DISK_ERR: return "FR_DISK_ERR";
+        case FR_INT_ERR: return "FR_INT_ERR";
+        case FR_NOT_READY: return "FR_NOT_READY";
+        case FR_NO_FILE: return "FR_NO_FILE";
+        case FR_NO_PATH: return "FR_NO_PATH";
+        case FR_INVALID_NAME: return "FR_INVALID_NAME";
+        case FR_DENIED: return "FR_DENIED";
+        case FR_EXIST: return "FR_EXIST";
+        case FR_INVALID_OBJECT: return "FR_INVALID_OBJECT";
+        case FR_WRITE_PROTECTED: return "FR_WRITE_PROTECTED";
+        case FR_INVALID_DRIVE: return "FR_INVALID_DRIVE";
+        case FR_NOT_ENABLED: return "FR_NOT_ENABLED";
+        case FR_NO_FILESYSTEM: return "FR_NO_FILESYSTEM";
+        case FR_MKFS_ABORTED: return "FR_MKFS_ABORTED";
+        case FR_TIMEOUT: return "FR_TIMEOUT";
+        case FR_LOCKED: return "FR_LOCKED";
+        case FR_NOT_ENOUGH_CORE: return "FR_NOT_ENOUGH_CORE";
+        case FR_TOO_MANY_OPEN_FILES: return "FR_TOO_MANY_OPEN_FILES";
+        case FR_INVALID_PARAMETER: return "FR_INVALID_PARAMETER";
+        default: return "FR_UNKNOWN";
+    }
+}
+
+struct SaveProgressContext
+{
+    uint32_t    now_ms;
+    const char* prefix;
+};
+
+void SaveProgressOverlay(PersistWriteStage stage, void* context)
+{
+    if(stage == PersistWriteStage::None || context == nullptr)
+        return;
+
+    auto* ctx = static_cast<SaveProgressContext*>(context);
+    char  text[24];
+    std::snprintf(text, sizeof(text), "%s %s", ctx->prefix, PersistWriteStageName(stage));
+    SetOverlay(app_state, text, ctx->now_ms, 400);
+    if(app_state.saving_all)
+        ui_renderer.Render(app_state, media_library, ctx->now_ms);
+    LOG("Save stage: %s", text);
 }
 
 template <typename Handler>
@@ -476,6 +555,12 @@ void SyncSongStateFromPlayer()
     for(int ch = 0; ch < 16; ch++)
     {
         app_state.channels[ch].program_override = settings.program_override[ch];
+        app_state.channels[ch].pan
+            = settings.pan_override[ch] >= 0 ? static_cast<uint8_t>(settings.pan_override[ch]) : 64;
+        app_state.channels[ch].volume      = settings.volume[ch];
+        app_state.channels[ch].reverb_send = settings.reverb_send[ch];
+        app_state.channels[ch].chorus_send = settings.chorus_send[ch];
+        app_state.channels[ch].muted       = settings.muted[ch];
         app_state.channels[ch].current_program
             = settings.program_override[ch] >= 0 ? static_cast<uint8_t>(settings.program_override[ch]) : 0;
     }
@@ -523,7 +608,14 @@ void ApplyAppSettings()
     settings.chorus_max        = app_state.sf2_chorus_max;
     settings.transpose         = app_state.sf2_transpose;
     for(int ch = 0; ch < 16; ch++)
+    {
         settings.program_override[ch] = app_state.channels[ch].program_override;
+        settings.pan_override[ch]     = static_cast<int8_t>(app_state.channels[ch].pan);
+        settings.volume[ch]           = app_state.channels[ch].volume;
+        settings.reverb_send[ch]      = app_state.channels[ch].reverb_send;
+        settings.chorus_send[ch]      = app_state.channels[ch].chorus_send;
+        settings.muted[ch]            = app_state.channels[ch].muted;
+    }
     settings.loop_start_measure
         = app_state.loop_start_measure < 1 ? 1 : app_state.loop_start_measure;
     settings.loop_start_beat = app_state.loop_start_beat < 1 ? 1 : app_state.loop_start_beat;
@@ -621,6 +713,7 @@ uint64_t MeasureBeatToTick(int measure, int beat, const SmfPlayer& player)
 void InitDefaultState()
 {
     app_state = AppState{};
+    app_state.cv_gate.gate_in[0].mode = GateInMode::SyncIn;
     for(int ch = 0; ch < 16; ch++)
     {
         app_state.channels[ch].volume      = 100;
@@ -647,13 +740,18 @@ bool EnsureAudioRunning()
             {
                 const uint64_t sample_time = sync_sample_counter + i;
                 bool           midi_edge   = false;
+                bool           gate_edge   = false;
                 if(pending_midi_clock_edges > 0)
                 {
                     pending_midi_clock_edges--;
                     midi_edge = true;
                 }
                 midi_clock_sync.ProcessSample(midi_edge, sample_time);
-                gate_clock_sync.ProcessSample(hw.gate_in_1.State(), sample_time);
+                if(GateInputSyncEnabled(app_state.cv_gate, 0))
+                    gate_edge = gate_edge || hw.gate_in_1.State();
+                if(GateInputSyncEnabled(app_state.cv_gate, 1))
+                    gate_edge = gate_edge || hw.gate_in_2.State();
+                gate_clock_sync.ProcessSample(gate_edge, sample_time);
             }
             sync_sample_counter += size;
             transport.ProcessAudio(in, out, size);
@@ -744,33 +842,124 @@ bool SaveAllSettings(uint32_t now_ms)
     char midi_path[MediaLibrary::kNameMax * 2]{};
     char sf2_path[MediaLibrary::kNameMax * 2]{};
     const auto midi_settings = smf_player.Settings();
-    MidiRoutingConfig saved_midi_routing{};
+    const bool had_audio     = audio_started;
+    PersistWriteStage cv_stage   = PersistWriteStage::None;
+    PersistWriteStage midi_stage = PersistWriteStage::None;
+    int cv_result_code           = -1;
+    int midi_result_code         = -1;
+    int perf_result_code         = -1;
+    SaveProgressContext cv_progress{now_ms, "CV"};
+    SaveProgressContext midi_progress{now_ms, "MIDI"};
+    SaveProgressContext perf_progress{now_ms, "PERF"};
+    auto show_save_stage     = [&](const char* text) {
+        SetOverlay(app_state, text, now_ms, 400);
+        if(app_state.saving_all)
+            ui_renderer.Render(app_state, media_library, now_ms);
+        LOG("Save stage: %s", text);
+    };
 
     media_library.BuildMidiPath(app_state.selected_midi_index, midi_path, sizeof(midi_path));
     media_library.BuildSoundFontPath(app_state.selected_sf2_index, sf2_path, sizeof(sf2_path));
 
+    show_save_stage("Save Prep");
     app_state.transport_playing = false;
     StopAudioIfRunning();
     transport.Reset(app_state);
-    SynthUnloadSf2();
-    smf_player.Close();
+    if(midi_path[0] != '\0')
+        smf_player.Close();
 
     bool midi_ok = true;
     if(midi_path[0] != '\0')
+    {
+        show_save_stage("Write MIDI");
         midi_ok = major_midi::WriteMajorMidiMetaEvent(midi_path, midi_settings);
+    }
 
-    const bool cv_ok = SaveCvGateConfig(kCvGateConfigPath, app_state.cv_gate);
+    show_save_stage("Write CV CFG");
+    const bool cv_ok = SaveCvGateConfig(
+        kCvGateConfigPath,
+        app_state.cv_gate,
+        &cv_stage,
+        &cv_result_code,
+        SaveProgressOverlay,
+        &cv_progress);
+    show_save_stage("Write MIDI CFG");
     const bool midi_routing_saved
-        = SaveMidiRoutingConfig(kMidiRoutingConfigPath, app_state.midi_routing);
-    const bool midi_routing_loaded
-        = midi_routing_saved
-          && LoadMidiRoutingConfig(kMidiRoutingConfigPath, saved_midi_routing);
-    const bool midi_routing_ok = midi_routing_saved && midi_routing_loaded;
-    if(midi_routing_ok)
-        app_state.midi_routing = saved_midi_routing;
+        = SaveMidiRoutingConfig(kMidiRoutingConfigPath,
+                                app_state.midi_routing,
+                                &midi_stage,
+                                &midi_result_code,
+                                SaveProgressOverlay,
+                                &midi_progress);
+    const bool midi_routing_ok = midi_routing_saved;
+    PersistWriteStage perf_stage = PersistWriteStage::None;
+    show_save_stage("Write PERF CFG");
+    const bool performance_ok
+        = SavePerformanceConfig(kPerformanceConfigPath,
+                                app_state,
+                                &perf_stage,
+                                &perf_result_code,
+                                SaveProgressOverlay,
+                                &perf_progress);
 
-    const bool reload_ok = LoadSelectedMedia(midi_path[0] != '\0', sf2_path[0] != '\0', now_ms);
-    if(midi_ok && cv_ok && midi_routing_ok && reload_ok)
+    if(!cv_ok)
+    {
+        char text[32];
+        std::snprintf(text,
+                      sizeof(text),
+                      "CV %s %s",
+                      PersistWriteStageName(cv_stage),
+                      FatFsResultName(cv_result_code));
+        show_save_stage(text);
+    }
+    if(!midi_routing_ok)
+    {
+        char text[32];
+        std::snprintf(text,
+                      sizeof(text),
+                      "MIDI %s %s",
+                      PersistWriteStageName(midi_stage),
+                      FatFsResultName(midi_result_code));
+        show_save_stage(text);
+    }
+    if(!performance_ok)
+    {
+        char text[32];
+        std::snprintf(text,
+                      sizeof(text),
+                      "PERF %s %s",
+                      PersistWriteStageName(perf_stage),
+                      FatFsResultName(perf_result_code));
+        show_save_stage(text);
+    }
+
+    bool midi_reload_ok = true;
+    if(midi_path[0] != '\0')
+    {
+        show_save_stage("Reopen MIDI");
+        midi_reload_ok = smf_player.Open(midi_path);
+        if(midi_reload_ok)
+        {
+            app_state.bpm = TempoUsecToBpm(smf_player.TempoUsecPerQuarter());
+            transport.SetFileBpm(static_cast<float>(app_state.bpm));
+            SyncSongStateFromPlayer();
+        }
+    }
+
+    if(performance_ok)
+    {
+        LoadPerformanceConfig(kPerformanceConfigPath, app_state);
+        app_state.settings_dirty = true;
+        ApplyAppSettings();
+    }
+
+    if(had_audio && sf2_path[0] != '\0')
+    {
+        show_save_stage("Resume Audio");
+        EnsureAudioRunning();
+    }
+
+    if(cv_ok && midi_routing_ok && performance_ok && midi_reload_ok)
     {
         app_state.ui_mode          = UiMode::Performance;
         app_state.menu_page        = MenuPage::Main;
@@ -827,6 +1016,9 @@ int main(void)
         LoadCvGateConfig(kCvGateConfigPath, app_state.cv_gate);
         LoadMidiRoutingConfig(kMidiRoutingConfigPath, app_state.midi_routing);
         LoadSelectedMedia(true, true, System::GetNow());
+        LoadPerformanceConfig(kPerformanceConfigPath, app_state);
+        app_state.settings_dirty = true;
+        ApplyAppSettings();
         if(media_library.MidiCount() > 0 && media_library.SoundFontCount() > 0)
             SetOverlay(app_state, "Ready", System::GetNow());
     }
@@ -934,6 +1126,7 @@ int main(void)
         AppState effective_state = app_state;
         effective_state.bpm      = cv_gate_engine.EffectiveBpm(app_state);
         effective_state.active_voices = static_cast<uint8_t>(SynthActiveVoiceCount());
+        const bool gate_sync_enabled = AnyGateInputSyncEnabled(app_state.cv_gate);
         if(app_state.sync_external)
         {
             const float midi_bpm = midi_clock_sync.GetBpmEstimate();
@@ -943,7 +1136,7 @@ int main(void)
                 effective_state.bpm = TempoUsecToBpm(static_cast<uint32_t>(60000000.0f / midi_bpm));
                 effective_state.sync_locked = true;
             }
-            else if(gate_clock_sync.IsLocked() && gate_bpm > 0.0f)
+            else if(gate_sync_enabled && gate_clock_sync.IsLocked() && gate_bpm > 0.0f)
             {
                 effective_state.bpm = TempoUsecToBpm(static_cast<uint32_t>(60000000.0f / gate_bpm));
                 effective_state.sync_locked = true;
