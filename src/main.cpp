@@ -13,6 +13,7 @@
 #include "per/tim.h"
 #include "performance_persist.h"
 #include "sd_mount.h"
+#include "song_config_persist.h"
 #include "smf_player.h"
 #include "synth_tsf.h"
 #include "ui_controller.h"
@@ -70,10 +71,6 @@ constexpr uint32_t kRenderIntervalUiActiveMs   = 100;
 constexpr uint32_t kUiActiveHoldMs             = 1200;
 constexpr uint64_t kScheduledMidiLeadSamples   = 512;
 constexpr uint32_t kMidiTxTimerRateHz          = 2000;
-const char*        kCvGateConfigPath           = "0:/major_midi_cv_gate.cfg";
-const char*        kMidiRoutingConfigPath      = "0:/major_midi_routing.cfg";
-const char*        kPerformanceConfigPath      = "0:/major_midi_performance.cfg";
-
 enum class MidiOutputKind : uint8_t
 {
     Notes,
@@ -169,6 +166,36 @@ void SaveProgressOverlay(PersistWriteStage stage, void* context)
     if(app_state.saving_all)
         ui_renderer.Render(app_state, media_library, ctx->now_ms);
     LOG("Save stage: %s", text);
+}
+
+void BuildSongConfigPath(const char* midi_path, char* out, size_t out_sz)
+{
+    if(out_sz == 0)
+        return;
+    out[0] = '\0';
+    if(midi_path == nullptr || midi_path[0] == '\0')
+        return;
+
+    std::snprintf(out, out_sz, "%s", midi_path);
+    char* dot = std::strrchr(out, '.');
+    if(dot != nullptr)
+        std::snprintf(dot, out_sz - static_cast<size_t>(dot - out), ".cfg");
+}
+
+void ResetSongScopedSettings()
+{
+    app_state.cv_gate = CvGateConfig{};
+    app_state.cv_gate.gate_in[0].mode = GateInMode::SyncIn;
+    app_state.midi_routing            = MidiRoutingConfig{};
+    for(int ch = 0; ch < 16; ch++)
+    {
+        app_state.channels[ch].volume           = 100;
+        app_state.channels[ch].pan              = 64;
+        app_state.channels[ch].reverb_send      = 0;
+        app_state.channels[ch].chorus_send      = 0;
+        app_state.channels[ch].program_override = -1;
+        app_state.channels[ch].muted            = false;
+    }
 }
 
 template <typename Handler>
@@ -775,9 +802,13 @@ bool LoadSelectedMedia(bool reload_midi, bool reload_sf2, uint32_t now_ms)
 {
     char midi_path[MediaLibrary::kNameMax * 2]{};
     char sf2_path[MediaLibrary::kNameMax * 2]{};
+    char song_cfg_path[MediaLibrary::kNameMax * 2 + 8]{};
 
     if(reload_midi)
+    {
         media_library.BuildMidiPath(app_state.selected_midi_index, midi_path, sizeof(midi_path));
+        BuildSongConfigPath(midi_path, song_cfg_path, sizeof(song_cfg_path));
+    }
     if(reload_sf2)
         media_library.BuildSoundFontPath(
             app_state.selected_sf2_index, sf2_path, sizeof(sf2_path));
@@ -811,6 +842,7 @@ bool LoadSelectedMedia(bool reload_midi, bool reload_sf2, uint32_t now_ms)
 
     if(reload_midi)
     {
+        ResetSongScopedSettings();
         smf_player.Close();
         midi_ok = midi_path[0] != '\0' && smf_player.Open(midi_path);
         if(midi_ok)
@@ -818,6 +850,10 @@ bool LoadSelectedMedia(bool reload_midi, bool reload_sf2, uint32_t now_ms)
             app_state.bpm = TempoUsecToBpm(smf_player.TempoUsecPerQuarter());
             transport.SetFileBpm(static_cast<float>(app_state.bpm));
             SyncSongStateFromPlayer();
+            if(song_cfg_path[0] != '\0')
+                LoadSongConfig(song_cfg_path, app_state);
+            app_state.settings_dirty = true;
+            ApplyAppSettings();
         }
     }
 
@@ -841,16 +877,12 @@ bool SaveAllSettings(uint32_t now_ms)
 {
     char midi_path[MediaLibrary::kNameMax * 2]{};
     char sf2_path[MediaLibrary::kNameMax * 2]{};
+    char song_cfg_path[MediaLibrary::kNameMax * 2 + 8]{};
     const auto midi_settings = smf_player.Settings();
     const bool had_audio     = audio_started;
-    PersistWriteStage cv_stage   = PersistWriteStage::None;
-    PersistWriteStage midi_stage = PersistWriteStage::None;
-    int cv_result_code           = -1;
-    int midi_result_code         = -1;
-    int perf_result_code         = -1;
-    SaveProgressContext cv_progress{now_ms, "CV"};
-    SaveProgressContext midi_progress{now_ms, "MIDI"};
-    SaveProgressContext perf_progress{now_ms, "PERF"};
+    PersistWriteStage song_stage  = PersistWriteStage::None;
+    int               song_result_code = -1;
+    SaveProgressContext song_progress{now_ms, "SONG"};
     auto show_save_stage     = [&](const char* text) {
         SetOverlay(app_state, text, now_ms, 400);
         if(app_state.saving_all)
@@ -860,6 +892,7 @@ bool SaveAllSettings(uint32_t now_ms)
 
     media_library.BuildMidiPath(app_state.selected_midi_index, midi_path, sizeof(midi_path));
     media_library.BuildSoundFontPath(app_state.selected_sf2_index, sf2_path, sizeof(sf2_path));
+    BuildSongConfigPath(midi_path, song_cfg_path, sizeof(song_cfg_path));
 
     show_save_stage("Save Prep");
     app_state.transport_playing = false;
@@ -875,61 +908,22 @@ bool SaveAllSettings(uint32_t now_ms)
         midi_ok = major_midi::WriteMajorMidiMetaEvent(midi_path, midi_settings);
     }
 
-    show_save_stage("Write CV CFG");
-    const bool cv_ok = SaveCvGateConfig(
-        kCvGateConfigPath,
-        app_state.cv_gate,
-        &cv_stage,
-        &cv_result_code,
-        SaveProgressOverlay,
-        &cv_progress);
-    show_save_stage("Write MIDI CFG");
-    const bool midi_routing_saved
-        = SaveMidiRoutingConfig(kMidiRoutingConfigPath,
-                                app_state.midi_routing,
-                                &midi_stage,
-                                &midi_result_code,
-                                SaveProgressOverlay,
-                                &midi_progress);
-    const bool midi_routing_ok = midi_routing_saved;
-    PersistWriteStage perf_stage = PersistWriteStage::None;
-    show_save_stage("Write PERF CFG");
-    const bool performance_ok
-        = SavePerformanceConfig(kPerformanceConfigPath,
-                                app_state,
-                                &perf_stage,
-                                &perf_result_code,
-                                SaveProgressOverlay,
-                                &perf_progress);
-
-    if(!cv_ok)
+    show_save_stage("Write SONG CFG");
+    const bool song_ok = song_cfg_path[0] != '\0'
+                             && SaveSongConfig(song_cfg_path,
+                                               app_state,
+                                               &song_stage,
+                                               &song_result_code,
+                                               SaveProgressOverlay,
+                                               &song_progress);
+    if(!song_ok)
     {
         char text[32];
         std::snprintf(text,
                       sizeof(text),
-                      "CV %s %s",
-                      PersistWriteStageName(cv_stage),
-                      FatFsResultName(cv_result_code));
-        show_save_stage(text);
-    }
-    if(!midi_routing_ok)
-    {
-        char text[32];
-        std::snprintf(text,
-                      sizeof(text),
-                      "MIDI %s %s",
-                      PersistWriteStageName(midi_stage),
-                      FatFsResultName(midi_result_code));
-        show_save_stage(text);
-    }
-    if(!performance_ok)
-    {
-        char text[32];
-        std::snprintf(text,
-                      sizeof(text),
-                      "PERF %s %s",
-                      PersistWriteStageName(perf_stage),
-                      FatFsResultName(perf_result_code));
+                      "SONG %s %s",
+                      PersistWriteStageName(song_stage),
+                      FatFsResultName(song_result_code));
         show_save_stage(text);
     }
 
@@ -946,9 +940,9 @@ bool SaveAllSettings(uint32_t now_ms)
         }
     }
 
-    if(performance_ok)
+    if(song_ok && song_cfg_path[0] != '\0')
     {
-        LoadPerformanceConfig(kPerformanceConfigPath, app_state);
+        LoadSongConfig(song_cfg_path, app_state);
         app_state.settings_dirty = true;
         ApplyAppSettings();
     }
@@ -959,7 +953,7 @@ bool SaveAllSettings(uint32_t now_ms)
         EnsureAudioRunning();
     }
 
-    if(cv_ok && midi_routing_ok && performance_ok && midi_reload_ok)
+    if(song_ok && midi_reload_ok)
     {
         app_state.ui_mode          = UiMode::Performance;
         app_state.menu_page        = MenuPage::Main;
@@ -1013,12 +1007,7 @@ int main(void)
 
     if(sd_ok)
     {
-        LoadCvGateConfig(kCvGateConfigPath, app_state.cv_gate);
-        LoadMidiRoutingConfig(kMidiRoutingConfigPath, app_state.midi_routing);
         LoadSelectedMedia(true, true, System::GetNow());
-        LoadPerformanceConfig(kPerformanceConfigPath, app_state);
-        app_state.settings_dirty = true;
-        ApplyAppSettings();
         if(media_library.MidiCount() > 0 && media_library.SoundFontCount() > 0)
             SetOverlay(app_state, "Ready", System::GetNow());
     }
