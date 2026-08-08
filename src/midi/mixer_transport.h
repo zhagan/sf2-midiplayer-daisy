@@ -82,8 +82,7 @@ class MixerTransport
                       size_t                           frames);
     void TransferScheduledFromParser(const AppState& state);
     bool QueueScheduledLoopEvent(const SmfPlayer::LoopCacheEvent& ev, uint64_t at_sample);
-    void ApplyLoopSnapshotImmediate();
-    void QueueLoopSeamEvents(uint64_t seam_sample);
+    bool QueueLoopSeamEvents(uint64_t seam_sample);
     void PumpLoopCache(uint64_t sample_now);
     bool EnsureLoopCache(const AppState& state);
     void ResetLoopCachePlayback();
@@ -159,6 +158,9 @@ class MixerTransport
     size_t             loop_snapshot_event_count_ = 0;
     size_t             loop_cache_cursor_ = 0;
     size_t             loop_cache_next_cursor_ = 0;
+    size_t             loop_cache_seam_channel_ = 0;
+    size_t             loop_cache_seam_snapshot_cursor_ = 0;
+    bool               loop_cache_seam_done_ = true;
     SmfPlayer::LoopCacheEvent* loop_snapshot_events_ = nullptr;
     SmfPlayer::LoopCacheEvent* loop_events_ = nullptr;
     MidiOutputCallback midi_output_callback_ = nullptr;
