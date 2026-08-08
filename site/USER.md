@@ -146,7 +146,7 @@ Channel focus shows:
 | Channel and bank | Which channel is selected |
 | Program | Current program or override, marked `OVR` for a manual override or `MID` when following the file |
 | Program name | Current GM/SF2 program label when available |
-| Volume and pan | Current mix values |
+| Volume and pan | Current mix values. Volume is a scaler on top of the MIDI file's own CC7 (channel volume) automation, not a replacement for it — at `127` the file's CC7 passes through unchanged, and lower settings quiet that channel proportionally while preserving the file's original mix and any volume automation baked into the track. |
 | Reverb and chorus | Current send values |
 | Mute state | Per-channel mute status |
 
@@ -321,7 +321,7 @@ SF2 settings:
 | `Voices` | Max synth voices, `0`-`32` (default `16`); `0` silences the synth entirely |
 | `Channel` | Channel being edited |
 | `Mute` | Mute for that channel |
-| `Volume` | Channel volume |
+| `Volume` | Channel volume. Scales the channel's own MIDI CC7 automation from the file (`127` = pass the file's CC7 through unchanged; lower values quiet it proportionally) rather than overriding it, so a song's original track balance and any volume automation in the file are preserved. A live CC7 message from an external MIDI controller on that channel still takes precedence in real time. |
 | `Pan` | Channel pan |
 | `RevSend` | Channel reverb send |
 | `ChoSend` | Channel chorus send |

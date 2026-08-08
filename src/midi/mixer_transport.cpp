@@ -54,6 +54,8 @@ void MixerTransport::Reset(const AppState& state)
     std::memset(has_program_override_, 0, sizeof(has_program_override_));
     std::memset(note_refcount_, 0, sizeof(note_refcount_));
     std::memset(cc_value_, 0, sizeof(cc_value_));
+    std::memset(file_volume_, 0, sizeof(file_volume_));
+    std::memset(has_file_volume_, 0, sizeof(has_file_volume_));
     std::memset(active_note_count_, 0, sizeof(active_note_count_));
     std::memset(note_on_count_, 0, sizeof(note_on_count_));
     for(size_t ch = 0; ch < 16; ch++)
@@ -278,14 +280,26 @@ uint8_t MixerTransport::ApplyTranspose(uint8_t ch, uint8_t note) const
     return static_cast<uint8_t>(transposed);
 }
 
+uint8_t MixerTransport::ComputeEffectiveVolume(uint8_t track_value,
+                                               uint8_t ui_value,
+                                               bool    muted,
+                                               uint8_t master_max) const
+{
+    if(muted)
+        return 0;
+    return ScaleController(ScaleController(track_value, ui_value), master_max);
+}
+
 uint8_t MixerTransport::EffectiveVolume(uint8_t ch, const AppState& state) const
 {
-    const uint8_t ui_value = state.channels[ch].volume;
-    const uint8_t base
-        = has_live_volume_[ch] ? ScaleController(live_volume_[ch], ui_value) : ui_value;
-    if(state.channels[ch].muted)
-        return 0;
-    return ScaleController(base, state.sf2_master_volume_max);
+    // The performance volume knob scales the channel's own CC7 (the mix
+    // baked into the file, or an external live controller) rather than
+    // replacing it, so the file's original balance is preserved.
+    const uint8_t track_value = has_live_volume_[ch] ? live_volume_[ch]
+                                : has_file_volume_[ch] ? file_volume_[ch]
+                                                        : 127;
+    return ComputeEffectiveVolume(
+        track_value, state.channels[ch].volume, state.channels[ch].muted, state.sf2_master_volume_max);
 }
 
 uint8_t MixerTransport::EffectivePan(uint8_t ch, const AppState& state) const
@@ -426,8 +440,23 @@ void MixerTransport::DispatchEvent(const MidiEv& ev, bool scheduled_source)
         case EvType::NoteOff: SynthNoteOff(actual.ch, actual.a); break;
         case EvType::Program: SynthProgramChange(actual.ch, actual.a); break;
         case EvType::ControlChange:
-            if(!(scheduled_source
-                 && (actual.a == 7 || actual.a == 10 || actual.a == 91 || actual.a == 93)))
+            if(scheduled_source && actual.a == 7)
+            {
+                // File-driven CC7 automation: scale it by the performance
+                // volume knob instead of dropping it, so the knob adjusts
+                // the track's own mix rather than overriding it.
+                file_volume_[actual.ch]     = actual.b;
+                has_file_volume_[actual.ch] = true;
+                const uint8_t track_value
+                    = has_live_volume_[actual.ch] ? live_volume_[actual.ch] : actual.b;
+                SynthControlChange(actual.ch,
+                                   7,
+                                   ComputeEffectiveVolume(track_value,
+                                                           applied_channels_[actual.ch].volume,
+                                                           applied_channels_[actual.ch].muted,
+                                                           master_volume_max_));
+            }
+            else if(!(scheduled_source && (actual.a == 10 || actual.a == 91 || actual.a == 93)))
                 SynthControlChange(actual.ch, actual.a, actual.b);
             break;
         case EvType::PitchBend:
@@ -806,6 +835,8 @@ void MixerTransport::StartPlayback(const AppState& state)
     std::memset(current_program_, 0, sizeof(current_program_));
     std::memset(note_refcount_, 0, sizeof(note_refcount_));
     std::memset(cc_value_, 0, sizeof(cc_value_));
+    std::memset(file_volume_, 0, sizeof(file_volume_));
+    std::memset(has_file_volume_, 0, sizeof(has_file_volume_));
     std::memset(active_note_count_, 0, sizeof(active_note_count_));
     std::memset(note_on_count_, 0, sizeof(note_on_count_));
     for(size_t ch = 0; ch < 16; ch++)
