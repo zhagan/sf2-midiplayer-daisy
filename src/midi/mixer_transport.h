@@ -69,6 +69,10 @@ class MixerTransport
     void RecomputeNoteExtrema(uint8_t ch);
     uint8_t ScaleController(uint8_t value, uint8_t max_value) const;
     uint8_t ApplyTranspose(uint8_t ch, uint8_t note) const;
+    uint8_t ComputeEffectiveVolume(uint8_t track_value,
+                                   uint8_t ui_value,
+                                   bool    muted,
+                                   uint8_t master_max) const;
     uint8_t EffectiveVolume(uint8_t ch, const AppState& state) const;
     uint8_t EffectivePan(uint8_t ch, const AppState& state) const;
     uint8_t EffectiveReverb(uint8_t ch, const AppState& state) const;
@@ -126,6 +130,8 @@ class MixerTransport
     uint8_t            live_pan_[16]{};
     uint8_t            live_reverb_[16]{};
     uint8_t            live_chorus_[16]{};
+    uint8_t            file_volume_[16]{};
+    bool               has_file_volume_[16]{};
     bool               has_live_volume_[16]{};
     bool               has_live_pan_[16]{};
     bool               has_live_reverb_[16]{};

@@ -57,18 +57,29 @@
         <section class="section" id="build">
   <h2>Build</h2>
 <p>Major MIDI firmware builds with the libDaisy Make workflow for the Daisy Patch SM (STM32H750, Cortex-M7). The repo is self-contained — it pins its own dependencies as submodules under <code>lib/</code>, so no surrounding <code>DaisyExamples</code> checkout is needed.</p>
-<p>You need <code>arm-none-eabi-gcc</code> and <code>dfu-util</code> on the path. Everything below was verified against GNU Arm Embedded <code>10.3-2021.10</code>, which is what CI pins.</p>
+<h3>Prerequisites</h3>
+<pre><code class="language-sh">brew install --cask gcc-arm-embedded   # arm-none-eabi-gcc
+brew install dfu-util                  # USB flashing</code></pre>
+<p>Everything below was verified against GNU Arm Embedded <code>10.3-2021.10</code>, which is what CI pins. Matching that version locally means your build and CI&#x27;s are bit-for-bit identical, which makes the verification step below meaningful.</p>
 <h3>Clone</h3>
-<p>There is a nested submodule two levels deep, so <code>--recursive</code> is required:</p>
+<p>There is a nested submodule two levels deep (<code>lib/DaisySP</code> → <code>DaisySP-LGPL</code>), so <strong><code>--recursive</code> is required</strong>:</p>
 <pre><code class="language-sh">git clone --recursive git@github.com:zhagan/major-midi.git
 cd major-midi</code></pre>
-<p>Already cloned without it? <code>git submodule update --init --recursive</code>.</p>
+<p>Without it the clone succeeds and then the firmware link fails on missing DaisySP-LGPL sources, since the Makefile sets <code>USE_DAISYSP_LGPL = 1</code>. If you already cloned without <code>--recursive</code>:</p>
+<pre><code class="language-sh">git submodule update --init --recursive</code></pre>
+<p>Confirm all four submodules landed on their pinned commits — a <code>+</code> or <code>-</code> prefix in this output means one drifted or never initialized:</p>
+<pre><code class="language-sh">git submodule status --recursive</code></pre>
 <h3>Compile</h3>
 <p>The two dependencies are static libraries and only need rebuilding when they change:</p>
 <pre><code class="language-sh">make -C lib/libDaisy      # libdaisy.a
 make -C lib/DaisySP       # libdaisysp.a + libdaisysp-lgpl.a
 make                      # build/MajorMIDI.bin</code></pre>
 <p><code>make clean</code> clears the firmware build only, not the libraries.</p>
+<h3>Verify the build</h3>
+<p>CI builds every push and uploads the resulting <code>MajorMIDI.bin</code> as a run artifact. Since CI pins the same toolchain, a correct local build is byte-identical to it — which is the quickest way to confirm your dependency wiring is right rather than merely compiling:</p>
+<pre><code class="language-sh">gh run download --name &quot;MajorMIDI-$(git rev-parse HEAD)&quot; --dir /tmp/ci
+shasum -a 256 build/MajorMIDI.bin /tmp/ci/MajorMIDI.bin</code></pre>
+<p>A mismatch almost always means a submodule is off its pinned commit (check <code>git submodule status --recursive</code>) or the local toolchain is not <code>10.3-2021.10</code>.</p>
 <h3>Flash</h3>
 <pre><code class="language-sh">make program-dfu     # app -&gt; QSPI 0x90040000
 make program-boot    # Daisy bootloader -&gt; internal flash 0x08000000 (once per board)</code></pre>
