@@ -553,6 +553,16 @@ bool MixerTransport::QueueLoopSeamEvents(uint64_t seam_sample)
 
 void MixerTransport::PumpLoopCache(uint64_t sample_now)
 {
+    // PumpLoopCache runs from the main-loop Update() call, while ProcessAudio
+    // (audio ISR) can concurrently cross a loop boundary and rewrite the very
+    // same cursor/phase state (loop_cache_cursor_, loop_cache_next_cursor_,
+    // loop_cache_next_primed_, loop_cache_seam_*, phase_start_sample_) at any
+    // point. Without locking, that interleaving corrupts the cursors right at
+    // the boundary on every single repeat - it was the actual cause of a
+    // pause that grew worse with each loop, not a queue-capacity issue.
+    // Hold the whole function atomic w.r.t. that ISR-side mutation.
+    ScopedIrqBlocker lock;
+
     if((!loop_cache_playback_ && !loop_cache_pending_) || !loop_cache_valid_)
         return;
 
@@ -708,16 +718,23 @@ bool MixerTransport::MaybeWrapLoopParser(const AppState& state, uint64_t sample_
     {
         player_->Stop();
         parsed_.Clear();
-        play_start_sample_   = restart_sample;
-        play_start_ticks_    = loop_start_ticks;
-        loop_cache_playback_ = false;
-        loop_cache_pending_  = true;
-        loop_cache_cursor_      = 0;
-        loop_cache_next_cursor_ = 0;
-        loop_cache_next_primed_ = false;
-        loop_cache_seam_done_             = false;
-        loop_cache_seam_channel_          = 0;
-        loop_cache_seam_snapshot_cursor_  = 0;
+        {
+            // Same cursor/phase state ProcessAudio reads on the audio ISR -
+            // lock the transition so it can't observe a half-updated set of
+            // fields (e.g. loop_cache_pending_ true before the cursors that
+            // go with it are reset).
+            ScopedIrqBlocker lock;
+            play_start_sample_   = restart_sample;
+            play_start_ticks_    = loop_start_ticks;
+            loop_cache_playback_ = false;
+            loop_cache_pending_  = true;
+            loop_cache_cursor_      = 0;
+            loop_cache_next_cursor_ = 0;
+            loop_cache_next_primed_ = false;
+            loop_cache_seam_done_             = false;
+            loop_cache_seam_channel_          = 0;
+            loop_cache_seam_snapshot_cursor_  = 0;
+        }
         PumpLoopCache(sample_now);
         return true;
     }
@@ -817,45 +834,52 @@ void MixerTransport::ProcessAudio(AudioHandle::InputBuffer  in,
     }
 
     sample_clock_ = block_sample + size;
-    if(loop_cache_pending_ && sample_clock_ >= play_start_sample_)
     {
-        phase_start_sample_  = play_start_sample_;
-        phase_start_ticks_   = play_start_ticks_;
-        loop_end_sample_     = phase_start_sample_ + loop_length_samples_;
-        loop_cache_playback_ = true;
-        loop_cache_pending_  = false;
-    }
-    if(loop_cache_playback_ && loop_length_samples_ > 0)
-    {
-        while(sample_clock_ >= loop_end_sample_)
+        // Same cursor/phase state PumpLoopCache reads and writes from the
+        // main loop - lock this section too so a boundary crossing here
+        // can't interleave with an in-progress PumpLoopCache call and tear
+        // the cursors (see the lock comment in PumpLoopCache).
+        ScopedIrqBlocker lock;
+        if(loop_cache_pending_ && sample_clock_ >= play_start_sample_)
         {
-            phase_start_sample_ = loop_end_sample_;
-            phase_start_ticks_  = loop_cache_start_tick_;
-            play_start_sample_  = phase_start_sample_;
-            play_start_ticks_   = phase_start_ticks_;
-            loop_end_sample_    = phase_start_sample_ + loop_length_samples_;
-            loop_cache_cursor_  = loop_cache_next_primed_ ? loop_cache_next_cursor_ : 0;
-            loop_cache_next_cursor_ = 0;
-            // If the next-cycle seam was already fully queued ahead of time
-            // (the common case), the cycle we're entering needs no further
-            // seam work. Otherwise leave loop_cache_seam_done_ false and the
-            // seam cursors untouched so PumpLoopCache resumes sending the
-            // (still-pending) seam for this same boundary sample instead of
-            // restarting it from channel 0.
-            loop_cache_seam_done_ = loop_cache_next_primed_;
-            if(loop_cache_next_primed_)
-            {
-                loop_cache_seam_channel_         = 0;
-                loop_cache_seam_snapshot_cursor_ = 0;
-            }
-            loop_cache_next_primed_ = false;
+            phase_start_sample_  = play_start_sample_;
+            phase_start_ticks_   = play_start_ticks_;
+            loop_end_sample_     = phase_start_sample_ + loop_length_samples_;
+            loop_cache_playback_ = true;
+            loop_cache_pending_  = false;
         }
-    }
-    else if(loop_active_ && phase_start_sample_ != play_start_sample_
-            && sample_clock_ >= play_start_sample_)
-    {
-        phase_start_sample_ = play_start_sample_;
-        phase_start_ticks_  = play_start_ticks_;
+        if(loop_cache_playback_ && loop_length_samples_ > 0)
+        {
+            while(sample_clock_ >= loop_end_sample_)
+            {
+                phase_start_sample_ = loop_end_sample_;
+                phase_start_ticks_  = loop_cache_start_tick_;
+                play_start_sample_  = phase_start_sample_;
+                play_start_ticks_   = phase_start_ticks_;
+                loop_end_sample_    = phase_start_sample_ + loop_length_samples_;
+                loop_cache_cursor_  = loop_cache_next_primed_ ? loop_cache_next_cursor_ : 0;
+                loop_cache_next_cursor_ = 0;
+                // If the next-cycle seam was already fully queued ahead of time
+                // (the common case), the cycle we're entering needs no further
+                // seam work. Otherwise leave loop_cache_seam_done_ false and the
+                // seam cursors untouched so PumpLoopCache resumes sending the
+                // (still-pending) seam for this same boundary sample instead of
+                // restarting it from channel 0.
+                loop_cache_seam_done_ = loop_cache_next_primed_;
+                if(loop_cache_next_primed_)
+                {
+                    loop_cache_seam_channel_         = 0;
+                    loop_cache_seam_snapshot_cursor_ = 0;
+                }
+                loop_cache_next_primed_ = false;
+            }
+        }
+        else if(loop_active_ && phase_start_sample_ != play_start_sample_
+                && sample_clock_ >= play_start_sample_)
+        {
+            phase_start_sample_ = play_start_sample_;
+            phase_start_ticks_  = play_start_ticks_;
+        }
     }
 }
 
