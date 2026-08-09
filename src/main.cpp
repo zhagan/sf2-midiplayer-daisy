@@ -1659,11 +1659,18 @@ int main(void)
             = static_cast<uint8_t>(SynthActiveVoiceCount());
         bool external_midi_step_advanced = false;
         uint64_t external_midi_tick      = 0;
+        const bool gate_sync_enabled
+            = AnyGateInputSyncEnabled(app_state.cv_gate);
+        // A gate wired as Sync In is authoritative over the free-running MIDI
+        // clock estimate: its pulses drive playback directly instead of
+        // merely informing the BPM display.
+        ClockSync& active_external_clock
+            = gate_sync_enabled ? gate_clock_sync : midi_clock_sync;
         if(app_state.sync_external)
         {
             const uint64_t ticks_per_step
                 = smf_player.Divisions() > 0 ? (smf_player.Divisions() / 4u) : 120u;
-            while(midi_clock_sync.ConsumeExternalStep())
+            while(active_external_clock.ConsumeExternalStep())
             {
                 external_midi_step_count++;
                 external_midi_step_advanced = true;
@@ -1683,23 +1690,13 @@ int main(void)
                 external_midi_tick = absolute_tick;
             }
         }
-        const bool gate_sync_enabled
-            = AnyGateInputSyncEnabled(app_state.cv_gate);
         if(app_state.sync_external)
         {
-            const float midi_bpm = midi_clock_sync.GetBpmEstimate();
-            const float gate_bpm = gate_clock_sync.GetBpmEstimate();
-            if(midi_clock_sync.IsLocked() && midi_bpm > 0.0f)
+            const float active_bpm = active_external_clock.GetBpmEstimate();
+            if(active_external_clock.IsLocked() && active_bpm > 0.0f)
             {
                 effective_state.bpm = TempoUsecToBpm(
-                    static_cast<uint32_t>(60000000.0f / midi_bpm));
-                effective_state.sync_locked = true;
-            }
-            else if(gate_sync_enabled && gate_clock_sync.IsLocked()
-                    && gate_bpm > 0.0f)
-            {
-                effective_state.bpm = TempoUsecToBpm(
-                    static_cast<uint32_t>(60000000.0f / gate_bpm));
+                    static_cast<uint32_t>(60000000.0f / active_bpm));
                 effective_state.sync_locked = true;
             }
             else

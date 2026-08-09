@@ -396,7 +396,7 @@ Gate input modes:
 | Mode | Meaning |
 | --- | --- |
 | `Off` | Disabled |
-| `Sync` | External gate sync input |
+| `Sync` | External gate sync input — pulses directly step playback (one pulse advances the loaded MIDI file by one 16th note) and also drive the displayed/effective BPM |
 | `NoteTrig` | Trigger notes on a channel |
 
 `NoteTrig` reads its paired CV input as a pitch across a 5-octave span (from `C1` to `C6`) and fires the note at a fixed velocity.
@@ -440,7 +440,9 @@ External sync can follow:
 | MIDI clock | Via incoming MIDI transport clock |
 | Gate sync | Via configured gate input sync pulses |
 
-If both a MIDI clock source and a gate sync input are active at once, MIDI clock takes priority.
+If a gate input is configured in `Sync` mode, its pulses directly drive playback — each pulse advances the loaded MIDI file by one 16th note — and also set the displayed/effective BPM and lock status. MIDI clock only drives playback when no gate input is configured for `Sync`.
+
+If both a MIDI clock source and a gate sync input are active at once, the configured gate sync input takes priority: its pulses step playback directly and MIDI clock is ignored for advancing the file (though it may still be present on the bus).
 
 If external sync is selected and no valid clock arrives, `Play` will arm transport but the song will not move.
 
@@ -493,3 +495,7 @@ Updating firmware does not erase your SD card, so your `.mid` files, SoundFonts,
 | No sound at all | `Voices` may be set to `0`, which silences the synth |
 | Audio overload or glitches | Lower `Voices`, reduce dense arrangements, or use a lighter SF2 |
 | Reverb/chorus seems to disappear under dense passages | Expected: FX auto-bypasses above 16 active voices and returns at 12 or fewer |
+
+## Changelog
+
+- Gate Sync In now drives MIDI file playback directly (one pulse = one 16th note) and takes priority over MIDI clock when configured, instead of only affecting the BPM estimate.
