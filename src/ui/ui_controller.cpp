@@ -35,7 +35,7 @@ size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
     switch(state.menu_page)
     {
         case MenuPage::Main: return MainMenuItemCount();
-        case MenuPage::General: return 6;
+        case MenuPage::General: return 7;
         case MenuPage::Fx: return 5;
         case MenuPage::Song: return 9;
         case MenuPage::Sf2: return 9;
@@ -906,6 +906,13 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                                      + (delta > 0 ? 1 : -1),
                                  900,
                                  1100));
+                    break;
+                case 6:
+                    state_->master_volume_pct = static_cast<uint16_t>(
+                        ClampInt(static_cast<int>(state_->master_volume_pct)
+                                     + (delta > 0 ? 5 : -5),
+                                 0,
+                                 200));
                     break;
                 default: return;
             }

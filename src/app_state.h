@@ -326,6 +326,7 @@ struct AppState
     uint8_t      oled_x_offset           = 0;
     uint16_t     cv1_pitch_scale         = 1028;
     uint16_t     cv2_pitch_scale         = 1028;
+    uint16_t     master_volume_pct       = 100;
     float        fx_reverb_time          = 0.85f;
     float        fx_reverb_lpf_hz        = 8000.0f;
     float        fx_reverb_hpf_hz        = 80.0f;

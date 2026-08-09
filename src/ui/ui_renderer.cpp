@@ -46,7 +46,7 @@ size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
     switch(state.menu_page)
     {
         case MenuPage::Main: return 7;
-        case MenuPage::General: return 6;
+        case MenuPage::General: return 7;
             case MenuPage::Fx: return 5;
             case MenuPage::Song: return 9;
             case MenuPage::Sf2: return 9;
@@ -368,6 +368,14 @@ void UiRenderer::Render(const AppState&     state,
                             item == state.menu_page_cursor ? '>' : ' ',
                             static_cast<int>(state.cv2_pitch_scale / 10),
                             static_cast<int>(state.cv2_pitch_scale % 10));
+                        break;
+                    case 6:
+                        std::snprintf(
+                            line,
+                            sizeof(line),
+                            "%cMaster Vol %3u%%",
+                            item == state.menu_page_cursor ? '>' : ' ',
+                            static_cast<unsigned>(state.master_volume_pct));
                         break;
                 }
             }

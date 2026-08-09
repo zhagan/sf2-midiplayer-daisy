@@ -296,8 +296,8 @@ void SynthSetExternalGain(float gain)
 {
     if(gain < 0.0f)
         gain = 0.0f;
-    if(gain > 1.0f)
-        gain = 1.0f;
+    if(gain > 2.0f)
+        gain = 2.0f;
     g_external_gain = gain;
 }
 
