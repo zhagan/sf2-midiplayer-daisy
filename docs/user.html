@@ -53,6 +53,7 @@
           <a href="#saving-and-recall">Saving And Recall</a>
           <a href="#firmware-updates">Firmware Updates</a>
           <a href="#troubleshooting">Troubleshooting</a>
+          <a href="#changelog">Changelog</a>
         </nav>
       </aside>
 
@@ -225,7 +226,7 @@
 <p>Input CV modes:</p>
 <div class="table-wrap"><table><thead><tr><th>Mode</th><th>Meaning</th></tr></thead><tbody><tr><td><code>Off</code></td><td>Disabled</td></tr><tr><td><code>MasterVol</code></td><td>Master volume control. Modulates within the range set by <code>Master Vol</code> in the <code>General</code> menu (see <a href="#general">General</a>) rather than setting gain on its own — the UI setting is the base/ceiling, and the CV value scales within it.</td></tr><tr><td><code>BPM</code></td><td>Tempo control, <code>20</code>-<code>300</code> BPM linear across the CV input&#x27;s <code>0V</code>-<code>5V</code> range</td></tr><tr><td><code>Ch Pitch</code></td><td>Channel pitch control</td></tr><tr><td><code>Ch CC</code></td><td>Channel CC control</td></tr><tr><td><code>NotePitch</code></td><td>Note pitch control</td></tr></tbody></table></div>
 <p>Gate input modes:</p>
-<div class="table-wrap"><table><thead><tr><th>Mode</th><th>Meaning</th></tr></thead><tbody><tr><td><code>Off</code></td><td>Disabled</td></tr><tr><td><code>Sync</code></td><td>External gate sync input</td></tr><tr><td><code>NoteTrig</code></td><td>Trigger notes on a channel</td></tr></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Mode</th><th>Meaning</th></tr></thead><tbody><tr><td><code>Off</code></td><td>Disabled</td></tr><tr><td><code>Sync</code></td><td>External gate sync input — pulses directly step playback (one pulse advances the loaded MIDI file by one 16th note) and also drive the displayed/effective BPM</td></tr><tr><td><code>NoteTrig</code></td><td>Trigger notes on a channel</td></tr></tbody></table></div>
 <p><code>NoteTrig</code> reads its paired CV input as a pitch across a 5-octave span (from <code>C1</code> to <code>C6</code>) and fires the note at a fixed velocity.</p>
 <p>Gate output modes:</p>
 <div class="table-wrap"><table><thead><tr><th>Mode</th><th>Meaning</th></tr></thead><tbody><tr><td><code>Off</code></td><td>Disabled</td></tr><tr><td><code>Sync</code></td><td>Clock output</td></tr><tr><td><code>Reset</code></td><td>Reset pulse output</td></tr><tr><td><code>Ch Gate</code></td><td>Gate output from a channel</td></tr></tbody></table></div>
@@ -241,7 +242,8 @@
 <div class="table-wrap"><table><thead><tr><th>Sync source</th><th>Behavior</th></tr></thead><tbody><tr><td>Internal</td><td>Plays at the current BPM</td></tr><tr><td>External</td><td>Waits for incoming clock before advancing</td></tr></tbody></table></div>
 <p>External sync can follow:</p>
 <div class="table-wrap"><table><thead><tr><th>Source</th><th>Notes</th></tr></thead><tbody><tr><td>MIDI clock</td><td>Via incoming MIDI transport clock</td></tr><tr><td>Gate sync</td><td>Via configured gate input sync pulses</td></tr></tbody></table></div>
-<p>If both a MIDI clock source and a gate sync input are active at once, MIDI clock takes priority.</p>
+<p>If a gate input is configured in <code>Sync</code> mode, its pulses directly drive playback — each pulse advances the loaded MIDI file by one 16th note — and also set the displayed/effective BPM and lock status. MIDI clock only drives playback when no gate input is configured for <code>Sync</code>.</p>
+<p>If both a MIDI clock source and a gate sync input are active at once, the configured gate sync input takes priority: its pulses step playback directly and MIDI clock is ignored for advancing the file (though it may still be present on the bus).</p>
 <p>If external sync is selected and no valid clock arrives, <code>Play</code> will arm transport but the song will not move.</p>
 </section>
 <section class="section" id="saving-and-recall">
@@ -263,6 +265,10 @@
 <section class="section" id="troubleshooting">
   <h2>Troubleshooting</h2>
 <div class="table-wrap"><table><thead><tr><th>Problem</th><th>Check</th></tr></thead><tbody><tr><td>No playback when pressing <code>Play</code></td><td>Sync switch may be set to external with no incoming clock</td></tr><tr><td>No files in browser</td><td>Confirm files are under <code>0:/midi</code> or <code>0:/soundfonts</code>, and that the folder doesn&#x27;t exceed the browser&#x27;s visible-entry limit</td></tr><tr><td>Wrong instrument loads with a song</td><td>Check the song&#x27;s saved SF2 and per-channel program overrides</td></tr><tr><td>Knobs do not respond immediately</td><td><code>Knobs</code> may be set to <code>Pickup</code></td></tr><tr><td>No sound at all</td><td><code>Voices</code> may be set to <code>0</code>, which silences the synth</td></tr><tr><td>Audio overload or glitches</td><td>Lower <code>Voices</code>, reduce dense arrangements, or use a lighter SF2</td></tr><tr><td>Reverb/chorus seems to disappear under dense passages</td><td>Expected: FX auto-bypasses above 16 active voices and returns at 12 or fewer</td></tr></tbody></table></div>
+</section>
+<section class="section" id="changelog">
+  <h2>Changelog</h2>
+<ul class="bullets"><li>Gate Sync In now drives MIDI file playback directly (one pulse = one 16th note) and takes priority over MIDI clock when configured, instead of only affecting the BPM estimate.</li><li>Fixed: pressing <code>Play</code> under external sync (MIDI clock or gate) could resume mid-song instead of from the start, because pulses received while stopped kept queuing up and were dumped into the playback position the instant playback started. <code>Play</code> now always rewinds to the beginning (or the active loop&#x27;s start point) and discards any backlog from while it was stopped.</li></ul>
 </section>
 
         <div class="footer">
