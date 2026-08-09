@@ -35,6 +35,9 @@ class ClockSync
     bool ConsumeStepTick();
     // True when a valid external pulse arrives (scaled to 16th steps)
     bool ConsumeExternalStep();
+    // Drop any steps queued by pulses received while playback was stopped,
+    // without disturbing tempo lock/estimate.
+    void DiscardPendingExternalSteps() { pending_external_steps_ = 0; }
 
     float GetBpmEstimate() const;
     float GetSamplesPer16th() const { return samples_per_16th_; }

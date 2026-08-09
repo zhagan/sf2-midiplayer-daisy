@@ -268,7 +268,7 @@
 </section>
 <section class="section" id="changelog">
   <h2>Changelog</h2>
-<ul class="bullets"><li>Gate Sync In now drives MIDI file playback directly (one pulse = one 16th note) and takes priority over MIDI clock when configured, instead of only affecting the BPM estimate.</li></ul>
+<ul class="bullets"><li>Gate Sync In now drives MIDI file playback directly (one pulse = one 16th note) and takes priority over MIDI clock when configured, instead of only affecting the BPM estimate.</li><li>Fixed: pressing <code>Play</code> under external sync (MIDI clock or gate) could resume mid-song instead of from the start, because pulses received while stopped kept queuing up and were dumped into the playback position the instant playback started. <code>Play</code> now always rewinds to the beginning (or the active loop&#x27;s start point) and discards any backlog from while it was stopped.</li></ul>
 </section>
 
         <div class="footer">

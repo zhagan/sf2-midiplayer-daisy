@@ -66,6 +66,7 @@ bool              audio_started                  = false;
 uint64_t          external_midi_step_count       = 0;
 uint64_t          last_external_midi_tick        = 0;
 bool              external_start_armed           = false;
+bool              last_sync_play_active          = false;
 uint8_t           applied_sf2_max_voices         = 0;
 uint32_t          channel_flash_until[16]{};
 uint32_t          channel_monitor_until[16]{};
@@ -1666,6 +1667,22 @@ int main(void)
         // merely informing the BPM display.
         ClockSync& active_external_clock
             = gate_sync_enabled ? gate_clock_sync : midi_clock_sync;
+        // Gate sync has no Start/Stop message of its own (unlike incoming
+        // MIDI transport, handled in ServiceIncomingMidi), so treat the
+        // module's own Play toggle as that edge: rewind to tick 0 and drop
+        // any steps pulses queued up while playback was stopped, instead of
+        // resuming mid-song from wherever the free-running pulse count had
+        // drifted to.
+        const bool sync_play_active
+            = app_state.sync_external && app_state.transport_playing;
+        if(sync_play_active != last_sync_play_active)
+        {
+            external_midi_step_count = 0;
+            last_external_midi_tick  = 0;
+            external_start_armed     = sync_play_active;
+            active_external_clock.DiscardPendingExternalSteps();
+        }
+        last_sync_play_active = sync_play_active;
         if(app_state.sync_external)
         {
             const uint64_t ticks_per_step

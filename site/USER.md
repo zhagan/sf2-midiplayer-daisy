@@ -499,3 +499,4 @@ Updating firmware does not erase your SD card, so your `.mid` files, SoundFonts,
 ## Changelog
 
 - Gate Sync In now drives MIDI file playback directly (one pulse = one 16th note) and takes priority over MIDI clock when configured, instead of only affecting the BPM estimate.
+- Fixed: pressing `Play` under external sync (MIDI clock or gate) could resume mid-song instead of from the start, because pulses received while stopped kept queuing up and were dumped into the playback position the instant playback started. `Play` now always rewinds to the beginning (or the active loop's start point) and discards any backlog from while it was stopped.
