@@ -277,6 +277,8 @@ void CvGateEngine::Update(const AppState& state, MixerTransport& transport)
 
     live_bpm_ = 0;
 
+    const float base_gain = static_cast<float>(state.master_volume_pct) / 100.0f;
+
     bool master_volume_applied = false;
     for(size_t i = 0; i < 2; i++)
     {
@@ -285,7 +287,7 @@ void CvGateEngine::Update(const AppState& state, MixerTransport& transport)
         {
             case CvInMode::Off: break;
             case CvInMode::MasterVolume:
-                SynthSetExternalGain(cv_value);
+                SynthSetExternalGain(base_gain * cv_value);
                 master_volume_applied = true;
                 break;
             case CvInMode::Bpm:
@@ -309,7 +311,7 @@ void CvGateEngine::Update(const AppState& state, MixerTransport& transport)
 
     if(!master_volume_applied)
     {
-        SynthSetExternalGain(1.0f);
+        SynthSetExternalGain(base_gain);
     }
 
     for(size_t i = 0; i < 2; i++)

@@ -11,7 +11,7 @@ namespace
 {
 static constexpr char    kBootStatePath[] = "0:/major_midi_boot.cfg";
 static constexpr uint8_t kMagic[4]        = {'M', 'M', 'B', 'T'};
-static constexpr uint8_t kVersion         = 7;
+static constexpr uint8_t kVersion         = 8;
 static constexpr size_t  kLegacyNameMax   = 32;
 static constexpr size_t  kLegacyTimeoutOffset = 5 + kLegacyNameMax;
 static constexpr size_t  kLegacyKnobModeOffset = kLegacyTimeoutOffset + 2;
@@ -27,7 +27,9 @@ static constexpr size_t  kOledXOffsetOffset = kFreezeUiOffset + 1;
 static constexpr size_t  kFileSizeV6      = kOledXOffsetOffset + 1;
 static constexpr size_t  kCv1PitchScaleOffset = kOledXOffsetOffset + 1;
 static constexpr size_t  kCv2PitchScaleOffset = kCv1PitchScaleOffset + 2;
-static constexpr size_t  kFileSize        = kCv2PitchScaleOffset + 2;
+static constexpr size_t  kFileSizeV7      = kCv2PitchScaleOffset + 2;
+static constexpr size_t  kMasterVolumeOffset = kCv2PitchScaleOffset + 2;
+static constexpr size_t  kFileSize        = kMasterVolumeOffset + 2;
 
 uint16_t ReadUint16BE(const uint8_t* data)
 {
@@ -58,6 +60,11 @@ bool ValidOledXOffset(uint8_t raw)
 bool ValidPitchScale(uint16_t raw)
 {
     return raw >= 900 && raw <= 1100;
+}
+
+bool ValidMasterVolumePct(uint16_t raw)
+{
+    return raw <= 200;
 }
 
 } // namespace
@@ -101,7 +108,7 @@ bool LoadBootState(AppState& state, char* midi_name, size_t midi_name_sz)
             state.encoder_direction = static_cast<EncoderDirection>(data[kEncoderDirOffset]);
         if(ValidOledXOffset(data[kOledXOffsetOffset]))
             state.oled_x_offset = data[kOledXOffsetOffset];
-        if(version >= 7 && read >= kFileSize)
+        if(version >= 7 && read >= kFileSizeV7)
         {
             const uint16_t cv1_scale = ReadUint16BE(data + kCv1PitchScaleOffset);
             const uint16_t cv2_scale = ReadUint16BE(data + kCv2PitchScaleOffset);
@@ -109,6 +116,12 @@ bool LoadBootState(AppState& state, char* midi_name, size_t midi_name_sz)
                 state.cv1_pitch_scale = cv1_scale;
             if(ValidPitchScale(cv2_scale))
                 state.cv2_pitch_scale = cv2_scale;
+            if(version >= 8 && read >= kFileSize)
+            {
+                const uint16_t master_volume_pct = ReadUint16BE(data + kMasterVolumeOffset);
+                if(ValidMasterVolumePct(master_volume_pct))
+                    state.master_volume_pct = master_volume_pct;
+            }
         }
     }
     else if(version >= 5 && read >= kFreezeUiOffset + 1)
@@ -162,6 +175,7 @@ bool SaveBootState(const AppState& state, const char* midi_name)
     data[kOledXOffsetOffset] = state.oled_x_offset;
     WriteUint16BE(data + kCv1PitchScaleOffset, state.cv1_pitch_scale);
     WriteUint16BE(data + kCv2PitchScaleOffset, state.cv2_pitch_scale);
+    WriteUint16BE(data + kMasterVolumeOffset, state.master_volume_pct);
 
     FIL&          file        = SharedPersistFile();
     const FRESULT open_result = f_open(&file, kBootStatePath, FA_CREATE_ALWAYS | FA_WRITE);

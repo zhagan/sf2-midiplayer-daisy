@@ -277,8 +277,11 @@ General settings:
 | `OLED X` | Horizontal OLED column offset, `0`-`8` |
 | `CV1 Scl` | CV out 1 pitch-scale calibration, `90.0` - `110.0`% (default `102.8`%) |
 | `CV2 Scl` | CV out 2 pitch-scale calibration, `90.0` - `110.0`% (default `102.8`%) |
+| `Master Vol` | Master volume, `0`-`200`% in `5`% steps (default `100`%) |
 
 `CV1 Scl` and `CV2 Scl` trim the 1V/octave scaling of each pitch CV output in `0.1`% steps. This calibration is global and shared across every song — it lives in the boot config, not the per-song `.cfg` — so you set it once for your rack. Raise the scale if each octave measures slightly flat, and lower it if each octave measures sharp.
+
+`Master Vol` scales the final post-synthesis audio output. It's a device-global setting (stored in the boot config, not per-song) and is separate from the per-channel `Volume` scaler described in [Channel Focus](#channel-focus) and the `SF2` menu, which scales each channel's own CC7 automation rather than the overall output. At `100`% the output is unchanged; raising it above `100`% boosts overall level (up to `200`%), and the downstream limiter still protects against clipping if you push it that high. If a CV input is patched to `MasterVol` (see [CV/Gate](#cvgate)), the CV signal modulates within the range set by `Master Vol` rather than driving gain on its own.
 
 The screen saver only engages in performance mode, and only after the timeout has passed with no button/encoder/knob activity and no overlay message showing.
 
@@ -382,7 +385,7 @@ Input CV modes:
 | Mode | Meaning |
 | --- | --- |
 | `Off` | Disabled |
-| `MasterVol` | Master volume control |
+| `MasterVol` | Master volume control. Modulates within the range set by `Master Vol` in the `General` menu (see [General](#general)) rather than setting gain on its own — the UI setting is the base/ceiling, and the CV value scales within it. |
 | `BPM` | Tempo control, `20`-`300` BPM linear across the CV input's `0V`-`5V` range |
 | `Ch Pitch` | Channel pitch control |
 | `Ch CC` | Channel CC control |
