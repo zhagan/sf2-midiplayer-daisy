@@ -233,6 +233,8 @@ bool UiController::HandleEvent(const UiEvent& event,
                || state_->ui_mode == UiMode::LoopEdit || state_->ui_mode == UiMode::MidiMonitor
                || state_->ui_mode == UiMode::SongInfo)
                 return true;
+            if(event.index < 4)
+                bank_before_press_[event.index] = state_->bank;
             HandlePerformanceBankButton(event.index, now_ms);
             return true;
 
@@ -264,9 +266,11 @@ bool UiController::HandleEvent(const UiEvent& event,
                && state_->knob_page != KnobPage::Mute
                && event.index < 4)
             {
-                const int ch = VisibleChannelIndex(state_->bank, event.index);
+                const uint8_t bank = bank_before_press_[event.index];
+                const int     ch   = VisibleChannelIndex(bank, event.index);
                 if(ch >= 0 && ch < 16)
                 {
+                    state_->bank                    = bank;
                     state_->sf2_channel             = static_cast<uint8_t>(ch);
                     state_->instrument_focus_active = true;
                     state_->instrument_focus_cursor = 0;

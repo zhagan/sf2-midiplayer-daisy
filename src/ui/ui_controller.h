@@ -43,6 +43,7 @@ class UiController
 
     AppState* state_ = nullptr;
     bool      knob_caught_[4]{};
+    uint8_t   bank_before_press_[4]{};
 };
 
 } // namespace major_midi
