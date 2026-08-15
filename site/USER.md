@@ -291,13 +291,13 @@ FX settings are global, not per-channel.
 
 | Item | Meaning | Range |
 | --- | --- | --- |
+| `Reverb` | Reverb on/off | `On`, `Off` (default `On`) |
 | `Rev Time` | Reverb time | `0.0` - `1.0` |
 | `Rev LPF` | Reverb low-pass filter | `200 Hz` - `18000 Hz` |
 | `Rev HPF` | Reverb high-pass filter | `20 Hz` - `1000 Hz` |
+| `Chorus` | Chorus on/off | `On`, `Off` (default `On`) |
 | `Ch Depth` | Chorus depth | `0.0` - `1.0` |
 | `Ch Speed` | Chorus speed | `0.05 Hz` - `5.0 Hz` |
-| `Reverb` | Reverb on/off | `On`, `Off` (default `On`) |
-| `Chorus` | Chorus on/off | `On`, `Off` (default `On`) |
 
 Per-channel reverb and chorus amounts stay on the performance pages and in the `SF2` menu.
 

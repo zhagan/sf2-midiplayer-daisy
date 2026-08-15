@@ -384,6 +384,13 @@ void UiRenderer::Render(const AppState&     state,
                 switch(item)
                 {
                     case 0:
+                        std::snprintf(line,
+                                      sizeof(line),
+                                      "%cReverb %s",
+                                      item == state.menu_page_cursor ? '>' : ' ',
+                                      state.fx_reverb_enabled ? "On" : "Off");
+                        break;
+                    case 1:
                         std::snprintf(
                             line,
                             sizeof(line),
@@ -391,7 +398,7 @@ void UiRenderer::Render(const AppState&     state,
                             item == state.menu_page_cursor ? '>' : ' ',
                             static_cast<int>(state.fx_reverb_time * 100.0f));
                         break;
-                    case 1:
+                    case 2:
                         std::snprintf(line,
                                       sizeof(line),
                                       "%cRev LPF %5d",
@@ -399,7 +406,7 @@ void UiRenderer::Render(const AppState&     state,
                                                                      : ' ',
                                       static_cast<int>(state.fx_reverb_lpf_hz));
                         break;
-                    case 2:
+                    case 3:
                         std::snprintf(line,
                                       sizeof(line),
                                       "%cRev HPF %4d",
@@ -407,7 +414,14 @@ void UiRenderer::Render(const AppState&     state,
                                                                      : ' ',
                                       static_cast<int>(state.fx_reverb_hpf_hz));
                         break;
-                    case 3:
+                    case 4:
+                        std::snprintf(line,
+                                      sizeof(line),
+                                      "%cChorus %s",
+                                      item == state.menu_page_cursor ? '>' : ' ',
+                                      state.fx_chorus_enabled ? "On" : "Off");
+                        break;
+                    case 5:
                         std::snprintf(
                             line,
                             sizeof(line),
@@ -415,7 +429,7 @@ void UiRenderer::Render(const AppState&     state,
                             item == state.menu_page_cursor ? '>' : ' ',
                             static_cast<int>(state.fx_chorus_depth * 100.0f));
                         break;
-                    case 4:
+                    case 6:
                         std::snprintf(line,
                                       sizeof(line),
                                       "%cCh Speed %3d",
@@ -423,20 +437,6 @@ void UiRenderer::Render(const AppState&     state,
                                                                      : ' ',
                                       static_cast<int>(state.fx_chorus_speed_hz
                                                        * 100.0f));
-                        break;
-                    case 5:
-                        std::snprintf(line,
-                                      sizeof(line),
-                                      "%cReverb %s",
-                                      item == state.menu_page_cursor ? '>' : ' ',
-                                      state.fx_reverb_enabled ? "On" : "Off");
-                        break;
-                    case 6:
-                        std::snprintf(line,
-                                      sizeof(line),
-                                      "%cChorus %s",
-                                      item == state.menu_page_cursor ? '>' : ' ',
-                                      state.fx_chorus_enabled ? "On" : "Off");
                         break;
                 }
             }
