@@ -299,7 +299,7 @@ FX settings are global, not per-channel.
 
 Per-channel reverb and chorus amounts stay on the performance pages and in the `SF2` menu.
 
-To protect CPU headroom, reverb and chorus are automatically bypassed (dry signal only) once active voice count reaches 16, and are restored once it drops back to 12 or fewer. This happens automatically and isn't a setting you control directly — if you hear FX cut out under a dense arrangement, that's why.
+Reverb and chorus always run, regardless of active voice count.
 
 ## Song
 
@@ -494,12 +494,12 @@ Updating firmware does not erase your SD card, so your `.mid` files, SoundFonts,
 | Knobs do not respond immediately | `Knobs` may be set to `Pickup` |
 | No sound at all | `Voices` may be set to `0`, which silences the synth |
 | Audio overload or glitches | Lower `Voices`, reduce dense arrangements, or use a lighter SF2 |
-| Reverb/chorus seems to disappear under dense passages | Expected: FX auto-bypasses above 16 active voices and returns at 12 or fewer |
 
 ## Changelog
 
 - Performance mode no longer shows a pop-up message in the bottom row of the display when switching knob pages, banks, muting channels, or navigating instrument focus — the display stays clean while you play.
 - Instrument focus view no longer shows the small channel-position indicator (e.g. ">01 02 03 04") in the bottom-right corner.
+- Reverb and chorus no longer cut out at high voice counts — the FX now always run regardless of polyphony.
 - Gate Sync In now drives MIDI file playback directly (one pulse = one 16th note) and takes priority over MIDI clock when configured, instead of only affecting the BPM estimate.
 - Fixed: pressing `Play` under external sync (MIDI clock or gate) could resume mid-song instead of from the start, because pulses received while stopped kept queuing up and were dumped into the playback position the instant playback started. `Play` now always rewinds to the beginning (or the active loop's start point) and discards any backlog from while it was stopped.
 - Fixed: long-pressing a bank button now correctly opens that channel's instrument edit instead of jumping to the wrong channel.
