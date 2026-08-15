@@ -1438,19 +1438,6 @@ void UiRenderer::Render(const AppState&     state,
                 display_.SetCursor(col_x[i], row_y[4]);
                 display_.WriteString(line, Font_6x8, true);
             }
-
-            if(state.overlay.until_ms > now_ms)
-            {
-                display_.DrawRect(0, 54, 128, 10, true, true);
-                display_.SetCursor(2, 56);
-                display_.WriteString(state.overlay.text, Font_6x8, false);
-            }
-            else if(state.knob_page == KnobPage::Mute)
-            {
-                display_.DrawRect(0, 54, 128, 10, true, true);
-                display_.SetCursor(2, 56);
-                display_.WriteString("BANK=TOGGLE MUTES", Font_6x8, false);
-            }
         }
     }
 
