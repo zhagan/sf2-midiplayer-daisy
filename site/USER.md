@@ -497,6 +497,8 @@ Updating firmware does not erase your SD card, so your `.mid` files, SoundFonts,
 
 ## Changelog
 
+- Performance mode no longer shows a pop-up message in the bottom row of the display when switching knob pages, banks, muting channels, or navigating instrument focus — the display stays clean while you play.
+- Instrument focus view no longer shows the small channel-position indicator (e.g. ">01 02 03 04") in the bottom-right corner.
 - Reverb and chorus no longer cut out at high voice counts — the FX now always run regardless of polyphony.
 - Gate Sync In now drives MIDI file playback directly (one pulse = one 16th note) and takes priority over MIDI clock when configured, instead of only affecting the BPM estimate.
 - Fixed: pressing `Play` under external sync (MIDI clock or gate) could resume mid-song instead of from the start, because pulses received while stopped kept queuing up and were dumped into the playback position the instant playback started. `Play` now always rewinds to the beginning (or the active loop's start point) and discards any backlog from while it was stopped.
