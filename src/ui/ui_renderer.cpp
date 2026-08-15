@@ -1301,23 +1301,8 @@ void UiRenderer::Render(const AppState&     state,
                 display_.WriteString(line, Font_6x8, true);
             }
 
-            if(state.overlay.until_ms > now_ms)
-            {
-                display_.DrawRect(0, 54, 128, 10, true, true);
-                display_.SetCursor(2, 56);
-                display_.WriteString(state.overlay.text, Font_6x8, false);
-            }
-            else
-            {
-                std::snprintf(line,
-                              sizeof(line),
-                              "%s HOLD:X",
-                              state.instrument_focus_editing ? "EDIT" : "SELECT");
-                display_.SetCursor(0, 56);
-                display_.WriteString(line, Font_6x8, true);
-                display_.SetCursor(86, 56);
-                display_.WriteString(visible_channels, Font_6x8, true);
-            }
+            display_.SetCursor(86, 56);
+            display_.WriteString(visible_channels, Font_6x8, true);
         }
         else
         {
