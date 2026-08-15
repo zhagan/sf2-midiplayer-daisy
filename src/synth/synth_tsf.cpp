@@ -152,13 +152,10 @@ static float   g_reverb_hpf_hz = 80.0f;
 static float   g_chorus_depth = 0.35f;
 static float   g_chorus_speed_hz = 0.25f;
 static float   g_external_gain = 1.0f;
-static bool    g_fx_load_shed = false;
 static bool    g_synth_enabled = true;
 
 namespace
 {
-constexpr int kFxLoadShedOnVoices  = 16;
-constexpr int kFxLoadShedOffVoices = 12;
 constexpr size_t kSf2ArenaReserveBytes = 4 * 1024 * 1024;
 }
 
@@ -410,30 +407,6 @@ void SynthRender(float* outL, float* outR, size_t frames)
     static float tmpReverb[2 * 256];
     if(frames > 256)
         frames = 256;
-
-    const int active_voices = tsf_active_voice_count(g_tsf);
-    if(g_fx_load_shed)
-    {
-        if(active_voices <= kFxLoadShedOffVoices)
-            g_fx_load_shed = false;
-    }
-    else if(active_voices >= kFxLoadShedOnVoices)
-    {
-        g_fx_load_shed = true;
-    }
-
-    if(g_fx_load_shed)
-    {
-        tsf_render_float(g_tsf, tmp, (int)frames, 0);
-        for(size_t i = 0; i < frames; i++)
-        {
-            outL[i] = tmp[2 * i + 0] * g_external_gain;
-            outR[i] = tmp[2 * i + 1] * g_external_gain;
-        }
-        g_limiter_l.ProcessBlock(outL, frames, 1.0f);
-        g_limiter_r.ProcessBlock(outR, frames, 1.0f);
-        return;
-    }
 
     tsf_render_float_fx(g_tsf, tmp, tmpChorus, tmpReverb, (int)frames, 0);
     for(size_t i = 0; i < frames; i++)
