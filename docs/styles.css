@@ -10,7 +10,7 @@
   --code: #0d1610;
   --shadow: 0 22px 60px rgba(0, 0, 0, 0.35);
   --radius: 18px;
-  --content: 1200px;
+  --content: 1440px;
 }
 
 * {
@@ -65,8 +65,8 @@ pre code {
   grid-template-columns: 290px minmax(0, 1fr);
   max-width: var(--content);
   margin: 0 auto;
-  padding: 24px;
-  gap: 24px;
+  padding: 18px;
+  gap: 18px;
   height: 100vh;
 }
 
@@ -167,8 +167,7 @@ pre code {
 }
 
 .hero,
-.section,
-.callout {
+.section {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -176,8 +175,8 @@ pre code {
 }
 
 .hero {
-  padding: 26px;
-  margin-bottom: 24px;
+  padding: 22px 24px;
+  margin-bottom: 18px;
 }
 
 .hero-grid {
@@ -201,35 +200,10 @@ pre code {
   font-size: 0.98rem;
 }
 
-.hero-card {
-  padding: 18px;
-  border-radius: 16px;
-  background:
-    linear-gradient(160deg, rgba(182, 208, 93, 0.1), rgba(111, 168, 141, 0.1)),
-    rgba(18, 29, 21, 0.94);
-  border: 1px solid rgba(182, 208, 93, 0.24);
-}
-
-.hero-card h3 {
-  margin: 0 0 0.8rem;
-  font-size: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--accent);
-}
-
-.hero-card ul {
-  margin: 0;
-  padding-left: 1.1rem;
-}
-
-.hero-card li + li {
-  margin-top: 0.4rem;
-}
-
 .section {
-  padding: 24px 26px;
-  margin-bottom: 24px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  min-width: 0;
 }
 
 .section h2 {
@@ -411,16 +385,6 @@ th {
   color: var(--muted);
 }
 
-.callout {
-  padding: 18px 20px;
-  background: linear-gradient(180deg, rgba(26, 39, 28, 0.98) 0%, rgba(18, 28, 20, 0.96) 100%);
-  margin: 1rem 0 0;
-}
-
-.callout strong {
-  color: var(--accent);
-}
-
 .hero h2,
 .section h2,
 .section h3,
@@ -444,8 +408,6 @@ th {
 .section,
 .sidebar,
 .mini-card,
-.hero-card,
-.callout,
 pre {
   position: relative;
 }
@@ -453,9 +415,7 @@ pre {
 .hero::before,
 .section::before,
 .sidebar::before,
-.mini-card::before,
-.hero-card::before,
-.callout::before {
+.mini-card::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -741,7 +701,8 @@ input[type="checkbox"] {
   .hero-grid,
   .grid-2,
   .transfer-grid,
-  .image-grid {
+  .image-grid,
+  .song-loop-grid {
     grid-template-columns: 1fr;
   }
 
@@ -767,13 +728,7 @@ input[type="checkbox"] {
   }
 }
 
-/* Dense dashboard layout, used by the remote control page. */
-body.remote-page .shell {
-  max-width: 1440px;
-  padding: 18px;
-  gap: 18px;
-}
-
+/* Dense dashboard grid, used by the remote control page. */
 body.remote-page .main {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -788,12 +743,6 @@ body.remote-page .section {
 
 body.remote-page .hero {
   grid-column: 1 / -1;
-  padding: 22px 24px;
-}
-
-body.remote-page .section {
-  padding: 18px 20px;
-  min-width: 0;
 }
 
 body.remote-page #connect {
@@ -865,18 +814,3 @@ body.remote-page #channel-table input[type="range"] {
   }
 }
 
-@media (max-width: 720px) {
-  body.remote-page .shell {
-    padding: 14px;
-    gap: 14px;
-  }
-
-  body.remote-page .section,
-  body.remote-page .hero {
-    padding: 16px;
-  }
-
-  body.remote-page .song-loop-grid {
-    grid-template-columns: 1fr;
-  }
-}
