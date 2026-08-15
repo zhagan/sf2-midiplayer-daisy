@@ -47,7 +47,7 @@ size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
     {
         case MenuPage::Main: return 7;
         case MenuPage::General: return 7;
-            case MenuPage::Fx: return 5;
+            case MenuPage::Fx: return 7;
             case MenuPage::Song: return 9;
             case MenuPage::Sf2: return 9;
             case MenuPage::Midi: return 14;
@@ -423,6 +423,20 @@ void UiRenderer::Render(const AppState&     state,
                                                                      : ' ',
                                       static_cast<int>(state.fx_chorus_speed_hz
                                                        * 100.0f));
+                        break;
+                    case 5:
+                        std::snprintf(line,
+                                      sizeof(line),
+                                      "%cReverb %s",
+                                      item == state.menu_page_cursor ? '>' : ' ',
+                                      state.fx_reverb_enabled ? "On" : "Off");
+                        break;
+                    case 6:
+                        std::snprintf(line,
+                                      sizeof(line),
+                                      "%cChorus %s",
+                                      item == state.menu_page_cursor ? '>' : ' ',
+                                      state.fx_chorus_enabled ? "On" : "Off");
                         break;
                 }
             }

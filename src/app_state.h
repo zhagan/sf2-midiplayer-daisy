@@ -330,8 +330,10 @@ struct AppState
     float        fx_reverb_time          = 0.85f;
     float        fx_reverb_lpf_hz        = 8000.0f;
     float        fx_reverb_hpf_hz        = 80.0f;
+    bool         fx_reverb_enabled       = true;
     float        fx_chorus_depth         = 0.35f;
     float        fx_chorus_speed_hz      = 0.25f;
+    bool         fx_chorus_enabled       = true;
     uint8_t      sf2_master_volume_max   = 127;
     uint8_t      sf2_expression_max      = 127;
     uint8_t      sf2_reverb_max          = 127;

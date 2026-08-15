@@ -149,8 +149,10 @@ static float   g_reverb_hp_xr = 0.0f;
 static float   g_reverb_time = 0.85f;
 static float   g_reverb_lpf_hz = 8000.0f;
 static float   g_reverb_hpf_hz = 80.0f;
+static bool    g_reverb_enabled = true;
 static float   g_chorus_depth = 0.35f;
 static float   g_chorus_speed_hz = 0.25f;
+static bool    g_chorus_enabled = true;
 static float   g_external_gain = 1.0f;
 static bool    g_synth_enabled = true;
 
@@ -416,21 +418,31 @@ void SynthRender(float* outL, float* outR, size_t frames)
 
         const float chInL = tmpChorus[2 * i + 0];
         const float chInR = tmpChorus[2 * i + 1];
-        const float chIn = (chInL + chInR);
-        g_chorus.Process(chIn);
-        const float chL = g_chorus.GetLeft() * g_chorus_gain * g_chorus_wet;
-        const float chR = g_chorus.GetRight() * g_chorus_gain * g_chorus_wet;
+        float chL = 0.0f;
+        float chR = 0.0f;
+        if(g_chorus_enabled)
+        {
+            const float chIn = (chInL + chInR);
+            g_chorus.Process(chIn);
+            chL = g_chorus.GetLeft() * g_chorus_gain * g_chorus_wet;
+            chR = g_chorus.GetRight() * g_chorus_gain * g_chorus_wet;
+        }
 
         float rvL = 0.0f;
         float rvR = 0.0f;
-        g_reverb.Process(tmpReverb[2 * i + 0], tmpReverb[2 * i + 1], &rvL, &rvR);
-        // Simple one-pole HPF on reverb return
-        const float yL = g_reverb_hp_a * (g_reverb_hp_zl + rvL - g_reverb_hp_xl);
-        const float yR = g_reverb_hp_a * (g_reverb_hp_zr + rvR - g_reverb_hp_xr);
-        g_reverb_hp_zl = yL;
-        g_reverb_hp_zr = yR;
-        g_reverb_hp_xl = rvL;
-        g_reverb_hp_xr = rvR;
+        float yL  = 0.0f;
+        float yR  = 0.0f;
+        if(g_reverb_enabled)
+        {
+            g_reverb.Process(tmpReverb[2 * i + 0], tmpReverb[2 * i + 1], &rvL, &rvR);
+            // Simple one-pole HPF on reverb return
+            yL = g_reverb_hp_a * (g_reverb_hp_zl + rvL - g_reverb_hp_xl);
+            yR = g_reverb_hp_a * (g_reverb_hp_zr + rvR - g_reverb_hp_xr);
+            g_reverb_hp_zl = yL;
+            g_reverb_hp_zr = yR;
+            g_reverb_hp_xl = rvL;
+            g_reverb_hp_xr = rvR;
+        }
 
         // Send amounts already scale per-voice contributions.
         outL[i] = (dryL + chInL * g_chorus_dry + chL + tmpReverb[2 * i + 0] * g_reverb_dry
@@ -474,6 +486,11 @@ void SynthSetReverbHpFreq(float hz)
     const float x  = expf(-2.0f * 3.14159265f * hz / g_sample_rate);
     g_reverb_hp_a = x;
 }
+void SynthSetReverbEnabled(bool enabled)
+{
+    g_reverb_enabled = enabled;
+}
+
 void SynthSetChorusDepth(float d01)
 {
     if(d01 < 0.0f)
@@ -495,6 +512,11 @@ void SynthSetChorusSpeed(float hz)
     g_chorus.SetLfoFreq(hz);
 }
 
+void SynthSetChorusEnabled(bool enabled)
+{
+    g_chorus_enabled = enabled;
+}
+
 float SynthGetReverbTime()
 {
     return g_reverb_time;
@@ -510,6 +532,11 @@ float SynthGetReverbHpFreq()
     return g_reverb_hpf_hz;
 }
 
+bool SynthGetReverbEnabled()
+{
+    return g_reverb_enabled;
+}
+
 float SynthGetChorusDepth()
 {
     return g_chorus_depth;
@@ -518,4 +545,9 @@ float SynthGetChorusDepth()
 float SynthGetChorusSpeed()
 {
     return g_chorus_speed_hz;
+}
+
+bool SynthGetChorusEnabled()
+{
+    return g_chorus_enabled;
 }

@@ -36,7 +36,7 @@ size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
     {
         case MenuPage::Main: return MainMenuItemCount();
         case MenuPage::General: return 7;
-        case MenuPage::Fx: return 5;
+        case MenuPage::Fx: return 7;
         case MenuPage::Song: return 9;
         case MenuPage::Sf2: return 9;
         case MenuPage::Midi: return 14;
@@ -959,6 +959,12 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
                         state_->fx_chorus_speed_hz = 0.05f;
                     if(state_->fx_chorus_speed_hz > 5.0f)
                         state_->fx_chorus_speed_hz = 5.0f;
+                    break;
+                case 5:
+                    state_->fx_reverb_enabled = !state_->fx_reverb_enabled;
+                    break;
+                case 6:
+                    state_->fx_chorus_enabled = !state_->fx_chorus_enabled;
                     break;
                 default: return;
             }
