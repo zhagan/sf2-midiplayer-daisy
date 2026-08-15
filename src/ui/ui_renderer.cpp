@@ -1174,7 +1174,6 @@ void UiRenderer::Render(const AppState&     state,
                   ? static_cast<uint8_t>(selected_channel.program_override)
                   : selected_channel.current_program;
         char gm_name[21];
-        char visible_channels[24];
         CopyTrunc(SynthProgramName(static_cast<uint8_t>(selected_channel_index),
                                    effective_program),
                   gm_name,
@@ -1184,23 +1183,6 @@ void UiRenderer::Render(const AppState&     state,
                           sizeof(gm_name),
                           "Program %03d",
                           effective_program + 1);
-
-        std::snprintf(
-            visible_channels,
-            sizeof(visible_channels),
-            "%c%02d %c%02d %c%02d %c%02d",
-            selected_channel_index == VisibleChannelIndex(state.bank, 0) ? '>'
-                                                                         : ' ',
-            VisibleChannelIndex(state.bank, 0) + 1,
-            selected_channel_index == VisibleChannelIndex(state.bank, 1) ? '>'
-                                                                         : ' ',
-            VisibleChannelIndex(state.bank, 1) + 1,
-            selected_channel_index == VisibleChannelIndex(state.bank, 2) ? '>'
-                                                                         : ' ',
-            VisibleChannelIndex(state.bank, 2) + 1,
-            selected_channel_index == VisibleChannelIndex(state.bank, 3) ? '>'
-                                                                         : ' ',
-            VisibleChannelIndex(state.bank, 3) + 1);
 
         if(state.instrument_focus_active)
         {
@@ -1301,8 +1283,6 @@ void UiRenderer::Render(const AppState&     state,
                 display_.WriteString(line, Font_6x8, true);
             }
 
-            display_.SetCursor(86, 56);
-            display_.WriteString(visible_channels, Font_6x8, true);
         }
         else
         {
