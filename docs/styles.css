@@ -200,6 +200,16 @@ pre code {
   font-size: 0.98rem;
 }
 
+.hero-links {
+  display: flex;
+  gap: 14px;
+  font-size: 0.9rem;
+}
+
+.hero-links a {
+  font-weight: 600;
+}
+
 .section {
   padding: 18px 20px;
   margin-bottom: 18px;

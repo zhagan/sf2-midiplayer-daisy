@@ -2,6 +2,8 @@
 
 Major MIDI is Daisy Patch SM (STM32H750, Cortex-M7) firmware for playing Standard MIDI Files from SD card through a SoundFont 2 synth engine. The firmware also exposes live MIDI input, per-channel mixing, saved song state, MIDI routing, CV/gate integration, and a browser-based remote control / MIDI file transfer over USB SysEx.
 
+Docs site: [zackhagan.com/major-midi/](https://zackhagan.com/major-midi/)
+
 The user-facing guide lives in `site/USER.md`. The generated docs site in `docs/` is built from that file (and three others — see Docs Workflow below).
 
 ---
