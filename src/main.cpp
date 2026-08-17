@@ -953,8 +953,10 @@ void SyncFxStateFromSynth()
     app_state.fx_reverb_time     = SynthGetReverbTime();
     app_state.fx_reverb_lpf_hz   = SynthGetReverbLpFreq();
     app_state.fx_reverb_hpf_hz   = SynthGetReverbHpFreq();
+    app_state.fx_reverb_enabled  = SynthGetReverbEnabled();
     app_state.fx_chorus_depth    = SynthGetChorusDepth();
     app_state.fx_chorus_speed_hz = SynthGetChorusSpeed();
+    app_state.fx_chorus_enabled  = SynthGetChorusEnabled();
 }
 
 void SyncSongStateFromPlayer()
@@ -1034,8 +1036,10 @@ void ApplyAppSettings()
     SynthSetReverbTime(app_state.fx_reverb_time);
     SynthSetReverbLpFreq(app_state.fx_reverb_lpf_hz);
     SynthSetReverbHpFreq(app_state.fx_reverb_hpf_hz);
+    SynthSetReverbEnabled(app_state.fx_reverb_enabled);
     SynthSetChorusDepth(app_state.fx_chorus_depth);
     SynthSetChorusSpeed(app_state.fx_chorus_speed_hz);
+    SynthSetChorusEnabled(app_state.fx_chorus_enabled);
     if(applied_sf2_max_voices != app_state.sf2_max_voices)
     {
         SynthSetMaxVoices(app_state.sf2_max_voices);

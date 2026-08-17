@@ -36,7 +36,7 @@ size_t MenuPageItemCount(const AppState& state, const MediaLibrary& library)
     {
         case MenuPage::Main: return MainMenuItemCount();
         case MenuPage::General: return 7;
-        case MenuPage::Fx: return 5;
+        case MenuPage::Fx: return 7;
         case MenuPage::Song: return 9;
         case MenuPage::Sf2: return 9;
         case MenuPage::Midi: return 14;
@@ -926,34 +926,40 @@ void UiController::AdjustMenuValue(int32_t delta, uint32_t now_ms)
             switch(state_->menu_page_cursor)
             {
                 case 0:
+                    state_->fx_reverb_enabled = !state_->fx_reverb_enabled;
+                    break;
+                case 1:
                     state_->fx_reverb_time += delta > 0 ? 0.02f : -0.02f;
                     if(state_->fx_reverb_time < 0.0f)
                         state_->fx_reverb_time = 0.0f;
                     if(state_->fx_reverb_time > 1.0f)
                         state_->fx_reverb_time = 1.0f;
                     break;
-                case 1:
+                case 2:
                     state_->fx_reverb_lpf_hz += delta > 0 ? 200.0f : -200.0f;
                     if(state_->fx_reverb_lpf_hz < 200.0f)
                         state_->fx_reverb_lpf_hz = 200.0f;
                     if(state_->fx_reverb_lpf_hz > 18000.0f)
                         state_->fx_reverb_lpf_hz = 18000.0f;
                     break;
-                case 2:
+                case 3:
                     state_->fx_reverb_hpf_hz += delta > 0 ? 50.0f : -50.0f;
                     if(state_->fx_reverb_hpf_hz < 20.0f)
                         state_->fx_reverb_hpf_hz = 20.0f;
                     if(state_->fx_reverb_hpf_hz > 1000.0f)
                         state_->fx_reverb_hpf_hz = 1000.0f;
                     break;
-                case 3:
+                case 4:
+                    state_->fx_chorus_enabled = !state_->fx_chorus_enabled;
+                    break;
+                case 5:
                     state_->fx_chorus_depth += delta > 0 ? 0.02f : -0.02f;
                     if(state_->fx_chorus_depth < 0.0f)
                         state_->fx_chorus_depth = 0.0f;
                     if(state_->fx_chorus_depth > 1.0f)
                         state_->fx_chorus_depth = 1.0f;
                     break;
-                case 4:
+                case 6:
                     state_->fx_chorus_speed_hz += delta > 0 ? 0.05f : -0.05f;
                     if(state_->fx_chorus_speed_hz < 0.05f)
                         state_->fx_chorus_speed_hz = 0.05f;

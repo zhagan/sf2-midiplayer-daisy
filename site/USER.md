@@ -291,15 +291,17 @@ FX settings are global, not per-channel.
 
 | Item | Meaning | Range |
 | --- | --- | --- |
+| `Reverb` | Reverb on/off | `On`, `Off` (default `On`) |
 | `Rev Time` | Reverb time | `0.0` - `1.0` |
 | `Rev LPF` | Reverb low-pass filter | `200 Hz` - `18000 Hz` |
 | `Rev HPF` | Reverb high-pass filter | `20 Hz` - `1000 Hz` |
+| `Chorus` | Chorus on/off | `On`, `Off` (default `On`) |
 | `Ch Depth` | Chorus depth | `0.0` - `1.0` |
 | `Ch Speed` | Chorus speed | `0.05 Hz` - `5.0 Hz` |
 
 Per-channel reverb and chorus amounts stay on the performance pages and in the `SF2` menu.
 
-Reverb and chorus always run, regardless of active voice count.
+Turning `Reverb` or `Chorus` off skips that effect's processing entirely to save CPU — only the dry signal passes through. Turning it back on resumes processing with whatever `Rev Time`/`Rev LPF`/`Rev HPF` (reverb) or `Ch Depth`/`Ch Speed` (chorus) values were last set. Like the rest of the `FX` page, `Reverb` and `Chorus` are runtime-only settings — they are not saved to the per-song `.cfg` or the boot config, and both reset to `On` on every boot or song load.
 
 ## Song
 
@@ -497,6 +499,7 @@ Updating firmware does not erase your SD card, so your `.mid` files, SoundFonts,
 
 ## Changelog
 
+- Added `Reverb` and `Chorus` on/off toggles to the `FX` menu, letting you disable either effect's processing entirely to save CPU. Both default to `On` and are runtime-only (not saved to the per-song `.cfg` or boot config).
 - Performance mode no longer shows a pop-up message in the bottom row of the display when switching knob pages, banks, muting channels, or navigating instrument focus — the display stays clean while you play.
 - Instrument focus view no longer shows the small channel-position indicator (e.g. ">01 02 03 04") in the bottom-right corner.
 - Reverb and chorus no longer cut out at high voice counts — the FX now always run regardless of polyphony.
