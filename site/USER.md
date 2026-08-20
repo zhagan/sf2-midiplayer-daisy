@@ -17,28 +17,6 @@ If the sync switch is set to external, playback will wait for external clock ins
 
 Prefer to read offline? Download this manual as a PDF: [user_manual.pdf](user_manual.pdf).
 
-## SD Card Layout
-
-Major MIDI scans these folders recursively:
-
-```text
-0:/midi
-0:/soundfonts
-```
-
-Example:
-
-```text
-0:/midi/set1/track01.mid
-0:/midi/loops/arp.mid
-0:/soundfonts/general/microgm.sf2
-0:/soundfonts/drums/clubkit.sf2
-```
-
-Hidden files and AppleDouble files are ignored.
-
-There's no limit on how many `.mid` or `.sf2` files the card can hold in total — folders are browsed live, not pre-scanned into memory. The only cap is per folder: browsing a single folder in `Load MIDI` or `Load SF2` shows up to 128 entries for a MIDI folder and 32 entries for a SoundFont folder — if one folder holds more files than that, split them across subfolders so everything is reachable.
-
 ## Boot And Loading
 
 On boot, Major MIDI:
@@ -485,6 +463,28 @@ Updating needs no toolchain — just a USB cable and a browser:
 If the programmer does not see the module, the 2-second window has almost certainly closed — tap `RESET` again and reconnect straight away.
 
 Updating firmware does not erase your SD card, so your `.mid` files, SoundFonts, and saved `.cfg` song settings all carry over. If you prefer the command line, or you are building your own module from a bare Daisy Patch SM, the repository README covers `dfu-util` and first-time bootloader setup.
+
+## SD Card Layout
+
+Major MIDI scans these folders recursively:
+
+```text
+0:/midi
+0:/soundfonts
+```
+
+Example:
+
+```text
+0:/midi/set1/track01.mid
+0:/midi/loops/arp.mid
+0:/soundfonts/general/microgm.sf2
+0:/soundfonts/drums/clubkit.sf2
+```
+
+Hidden files and AppleDouble files are ignored.
+
+There's no limit on how many `.mid` or `.sf2` files the card can hold in total — folders are browsed live, not pre-scanned into memory. The only cap is per folder: browsing a single folder in `Load MIDI` or `Load SF2` shows up to 128 entries for a MIDI folder and 32 entries for a SoundFont folder — if one folder holds more files than that, split them across subfolders so everything is reachable.
 
 ## Troubleshooting
 

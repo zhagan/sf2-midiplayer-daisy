@@ -31,11 +31,11 @@
         <p class="nav-label">On This Page</p>
         <nav class="nav section-nav">
           <a href="#connect">Connect</a>
-          <a href="#status">Status</a>
+          <a href="#transport">Transport</a>
           <a href="#library">Library</a>
           <a href="#song">Song</a>
           <a href="#mixer">Mixer</a>
-          <a href="#transport">Transport</a>
+          <a href="#status">Status</a>
         </nav>
       </aside>
 
@@ -64,21 +64,15 @@
           </div>
         </section>
 
-        <section class="section" id="status">
-          <h2>Status</h2>
-          <div class="grid-2">
-            <div class="mini-card">
-              <h4>Transport</h4>
-              <p id="status-transport">Stopped</p>
-              <p id="status-position" class="fine-print">Measure -, Beat -</p>
-            </div>
-            <div class="mini-card">
-              <h4>Loaded Media</h4>
-              <p id="status-midi">MIDI: none</p>
-              <p id="status-sf2" class="fine-print">SF2: none</p>
-              <p id="status-bpm" class="fine-print">BPM: -</p>
-            </div>
+        <section class="section" id="transport">
+          <h2>Transport</h2>
+          <div class="button-row">
+            <button id="play-button">Play</button>
+            <button id="stop-button" class="secondary">Stop</button>
+            <button id="toggle-button" class="secondary">Toggle</button>
+            <button id="refresh-status" class="secondary">Refresh Status</button>
           </div>
+          <pre id="log" class="log">Waiting for Web MIDI access.</pre>
         </section>
 
         <section class="section" id="library">
@@ -183,15 +177,21 @@
           </div>
         </section>
 
-        <section class="section" id="transport">
-          <h2>Transport</h2>
-          <div class="button-row">
-            <button id="play-button">Play</button>
-            <button id="stop-button" class="secondary">Stop</button>
-            <button id="toggle-button" class="secondary">Toggle</button>
-            <button id="refresh-status" class="secondary">Refresh Status</button>
+        <section class="section" id="status">
+          <h2>Status</h2>
+          <div class="grid-2">
+            <div class="mini-card">
+              <h4>Transport</h4>
+              <p id="status-transport">Stopped</p>
+              <p id="status-position" class="fine-print">Measure -, Beat -</p>
+            </div>
+            <div class="mini-card">
+              <h4>Loaded Media</h4>
+              <p id="status-midi">MIDI: none</p>
+              <p id="status-sf2" class="fine-print">SF2: none</p>
+              <p id="status-bpm" class="fine-print">BPM: -</p>
+            </div>
           </div>
-          <pre id="log" class="log">Waiting for Web MIDI access.</pre>
         </section>
 
         <div class="footer">

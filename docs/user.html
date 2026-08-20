@@ -31,7 +31,6 @@
         <p class="nav-label">On This Page</p>
         <nav class="nav section-nav">
           <a href="#quick-start">Quick Start</a>
-          <a href="#sd-card-layout">SD Card Layout</a>
           <a href="#boot-and-loading">Boot And Loading</a>
           <a href="#front-panel">Front Panel</a>
           <a href="#performance-view">Performance View</a>
@@ -52,6 +51,7 @@
           <a href="#sync">Sync</a>
           <a href="#saving-and-recall">Saving And Recall</a>
           <a href="#firmware-updates">Firmware Updates</a>
+          <a href="#sd-card-layout">SD Card Layout</a>
           <a href="#troubleshooting">Troubleshooting</a>
           <a href="#changelog">Changelog</a>
         </nav>
@@ -72,19 +72,6 @@
 <ol class="steps"><li>Copy one or more <code>.mid</code> files into <code>0:/midi</code>.</li><li>Copy one or more <code>.sf2</code> files into <code>0:/soundfonts</code>.</li><li>Insert the SD card and power the module.</li><li>Open the menu with a long encoder press.</li><li>Load a MIDI file from <code>Load MIDI</code>.</li><li>Load a SoundFont from <code>Load SF2</code>.</li><li>Return to the performance screen.</li><li>Press <code>Play</code>.</li></ol>
 <p>If the sync switch is set to external, playback will wait for external clock instead of free-running.</p>
 <p>Prefer to read offline? Download this manual as a PDF: <a href="user_manual.pdf">user_manual.pdf</a>.</p>
-</section>
-<section class="section" id="sd-card-layout">
-  <h2>SD Card Layout</h2>
-<p>Major MIDI scans these folders recursively:</p>
-<pre><code class="language-text">0:/midi
-0:/soundfonts</code></pre>
-<p>Example:</p>
-<pre><code class="language-text">0:/midi/set1/track01.mid
-0:/midi/loops/arp.mid
-0:/soundfonts/general/microgm.sf2
-0:/soundfonts/drums/clubkit.sf2</code></pre>
-<p>Hidden files and AppleDouble files are ignored.</p>
-<p>There&#x27;s no limit on how many <code>.mid</code> or <code>.sf2</code> files the card can hold in total — folders are browsed live, not pre-scanned into memory. The only cap is per folder: browsing a single folder in <code>Load MIDI</code> or <code>Load SF2</code> shows up to 128 entries for a MIDI folder and 32 entries for a SoundFont folder — if one folder holds more files than that, split them across subfolders so everything is reachable.</p>
 </section>
 <section class="section" id="boot-and-loading">
   <h2>Boot And Loading</h2>
@@ -261,6 +248,19 @@
 <ol class="steps"><li>Download <code>MajorMIDI.bin</code> from the <a href="https://github.com/zhagan/major-midi/releases/latest">latest release</a>.</li><li>Connect the module to your computer over USB.</li><li>Tap the <code>RESET</code> button on the Daisy board. This opens a 2-second window where the module accepts a firmware update.</li><li>Within that window, open the <a href="https://electro-smith.github.io/Programmer/">Electro-Smith Web Programmer</a> in Chrome or Edge, connect to the module, select <code>MajorMIDI.bin</code>, and flash it to the <strong>QSPI</strong> target.</li><li>Power-cycle the module when it finishes.</li></ol>
 <p>If the programmer does not see the module, the 2-second window has almost certainly closed — tap <code>RESET</code> again and reconnect straight away.</p>
 <p>Updating firmware does not erase your SD card, so your <code>.mid</code> files, SoundFonts, and saved <code>.cfg</code> song settings all carry over. If you prefer the command line, or you are building your own module from a bare Daisy Patch SM, the repository README covers <code>dfu-util</code> and first-time bootloader setup.</p>
+</section>
+<section class="section" id="sd-card-layout">
+  <h2>SD Card Layout</h2>
+<p>Major MIDI scans these folders recursively:</p>
+<pre><code class="language-text">0:/midi
+0:/soundfonts</code></pre>
+<p>Example:</p>
+<pre><code class="language-text">0:/midi/set1/track01.mid
+0:/midi/loops/arp.mid
+0:/soundfonts/general/microgm.sf2
+0:/soundfonts/drums/clubkit.sf2</code></pre>
+<p>Hidden files and AppleDouble files are ignored.</p>
+<p>There&#x27;s no limit on how many <code>.mid</code> or <code>.sf2</code> files the card can hold in total — folders are browsed live, not pre-scanned into memory. The only cap is per folder: browsing a single folder in <code>Load MIDI</code> or <code>Load SF2</code> shows up to 128 entries for a MIDI folder and 32 entries for a SoundFont folder — if one folder holds more files than that, split them across subfolders so everything is reachable.</p>
 </section>
 <section class="section" id="troubleshooting">
   <h2>Troubleshooting</h2>
