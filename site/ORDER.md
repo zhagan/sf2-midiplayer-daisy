@@ -24,6 +24,8 @@ Major MIDI ships as a complete Eurorack module, built around the Daisy Patch SM 
 
 Nothing to flash and no toolchain to install — put your `.mid` and `.sf2` files on the card and go. The [User Manual](user.html) covers setup and operation, and firmware updates when new releases land.
 
+Don't have `.mid` or `.sf2` files handy? [BitMidi](https://bitmidi.com/) has a large library of free MIDI files, and [musical-artifacts.com](https://musical-artifacts.com/) has free SoundFonts.
+
 Use the manual and dev pages for the rest of the project context:
 
 - [User Manual](user.html)
